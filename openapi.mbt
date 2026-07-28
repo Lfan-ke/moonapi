@@ -19,6 +19,39 @@ fn version_field(v : OpenApiVersion) -> (String, String) {
 }
 
 ///|
+/// A `:name` path parameter as an OpenAPI parameter object for `version`. In
+/// Swagger 2.0 the type sits inline; in OpenAPI 3.x it lives under `schema`,
+/// which is the one structural difference between the two shapes.
+fn path_parameter(name : String, version : OpenApiVersion) -> Json {
+  let param : Map[String, Json] = Map([
+    ("name", name.to_json()),
+    ("in", "path".to_json()),
+    ("required", true.to_json()),
+  ])
+  match version {
+    Swagger20 => param["type"] = "string".to_json()
+    _ => {
+      let schema : Map[String, Json] = Map([("type", "string".to_json())])
+      param["schema"] = schema.to_json()
+    }
+  }
+  param.to_json()
+}
+
+///|
+/// The `:name` parameters of a route path, in order, as OpenAPI parameter
+/// objects — the faithful equivalent of FastAPI reading them off the signature.
+fn path_parameters(path : String, version : OpenApiVersion) -> Array[Json] {
+  let out : Array[Json] = []
+  for seg in segments(path) {
+    if seg.length() > 0 && seg[0] == ':' {
+      out.push(path_parameter(seg[1:].to_owned(), version))
+    }
+  }
+  out
+}
+
+///|
 /// Build the OpenAPI / Swagger document for the app as a `Json` value, walking
 /// the registered routes once into paths → methods → operations.
 pub fn App::openapi(
@@ -32,6 +65,10 @@ pub fn App::openapi(
     let op : Map[String, Json] = Map([])
     if route.summary != "" {
       op["summary"] = route.summary.to_json()
+    }
+    let params = path_parameters(route.path, version)
+    if params.length() > 0 {
+      op["parameters"] = params.to_json()
     }
     let ok : Map[String, Json] = Map([("description", "OK".to_json())])
     let responses : Map[String, Json] = Map([("200", ok.to_json())])
