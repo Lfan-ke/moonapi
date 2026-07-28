@@ -61,6 +61,7 @@ struct Route {
   path : String
   handler : ApiHandler
   summary : String
+  endpoint : Endpoint?
 }
 
 ///|
@@ -77,15 +78,18 @@ pub fn App::new() -> App {
 }
 
 ///|
-/// Register a route for an explicit method.
+/// Register a route for an explicit method. An optional `endpoint` descriptor
+/// makes the route fully typed: its parameters, request body, and responses
+/// surface in the OpenAPI document and drive validation.
 pub fn App::route(
   self : App,
   verb : Method,
   path : String,
   handler : ApiHandler,
   summary? : String = "",
+  endpoint? : Endpoint? = None,
 ) -> Unit {
-  self.routes.push({ verb, path, handler, summary })
+  self.routes.push({ verb, path, handler, summary, endpoint })
 }
 
 ///|
@@ -94,8 +98,9 @@ pub fn App::get(
   path : String,
   handler : ApiHandler,
   summary? : String = "",
+  endpoint? : Endpoint? = None,
 ) -> Unit {
-  self.route(Get, path, handler, summary~)
+  self.route(Get, path, handler, summary~, endpoint~)
 }
 
 ///|
@@ -104,8 +109,9 @@ pub fn App::post(
   path : String,
   handler : ApiHandler,
   summary? : String = "",
+  endpoint? : Endpoint? = None,
 ) -> Unit {
-  self.route(Post, path, handler, summary~)
+  self.route(Post, path, handler, summary~, endpoint~)
 }
 
 ///|
@@ -114,8 +120,9 @@ pub fn App::put(
   path : String,
   handler : ApiHandler,
   summary? : String = "",
+  endpoint? : Endpoint? = None,
 ) -> Unit {
-  self.route(Put, path, handler, summary~)
+  self.route(Put, path, handler, summary~, endpoint~)
 }
 
 ///|
@@ -124,8 +131,9 @@ pub fn App::patch(
   path : String,
   handler : ApiHandler,
   summary? : String = "",
+  endpoint? : Endpoint? = None,
 ) -> Unit {
-  self.route(Patch, path, handler, summary~)
+  self.route(Patch, path, handler, summary~, endpoint~)
 }
 
 ///|
@@ -134,8 +142,9 @@ pub fn App::delete(
   path : String,
   handler : ApiHandler,
   summary? : String = "",
+  endpoint? : Endpoint? = None,
 ) -> Unit {
-  self.route(Delete, path, handler, summary~)
+  self.route(Delete, path, handler, summary~, endpoint~)
 }
 
 ///|

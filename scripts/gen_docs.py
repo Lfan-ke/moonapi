@@ -9,12 +9,26 @@ SECTIONS = [
     ("app", "app.mbt", "Application & routing",
      "The App, its route builders (get / post / ...), :param path matching, the "
      "Context, and text / json response helpers - plus App::to_asgi to run anywhere."),
+    ("schema", "schema.mbt", "Descriptor tree",
+     "The runtime Schema descriptor - the first-class value that stands in for "
+     "FastAPI's from-signature reflection. Walked once to emit complete OpenAPI "
+     "body schemas (objects / arrays / scalars, required, $ref'd components) and "
+     "to drive validation. Includes the ToSchema trait and its builders."),
+    ("endpoint", "endpoint.mbt", "Endpoint descriptor",
+     "Param / ResponseSpec / Endpoint - the descriptor a typed route carries, "
+     "walked once into an OpenAPI operation (parameters + requestBody + responses, "
+     "with named schemas hoisted into components)."),
     ("openapi", "openapi.mbt", "OpenAPI & Swagger",
      "Multi-version OpenAPI / Swagger generation (2.0 / 3.0 / 3.1) from the same "
-     "routes, and a ready-to-serve Swagger UI page."),
+     "routes and descriptors, and a ready-to-serve Swagger UI page."),
     ("validation", "validation.mbt", "Extraction & validation",
-     "Typed extraction off the Context - query params, JSON body, and single JSON "
-     "fields - plus FastAPI-shaped ValidationError values and 422 responses."),
+     "Typed extraction off the Context - query / cookie params, JSON body, single "
+     "JSON fields - plus descriptor-driven validation and FastAPI-shaped "
+     "ValidationError values and 422 responses."),
+    ("demo", "demo.mbt", "Worked example",
+     "User structs that describe their own schema (derive(ToJson) + a T::schema() "
+     "associated function + a ToSchema bridge) and a demo app whose request and "
+     "response bodies surface fully-typed in openapi.json - the mctl-friendly shape."),
 ]
 
 KIND = {"struct": "struct", "enum": "enum", "fn": "fn", "type": "type", "let": "let"}

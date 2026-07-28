@@ -61,18 +61,27 @@ pub fn App::openapi(
   api_version? : String = "0.1.0",
 ) -> Json {
   let paths : Map[String, Json] = Map([])
+  let defs : Map[String, Json] = Map([])
   for route in self.routes {
     let op : Map[String, Json] = Map([])
     if route.summary != "" {
       op["summary"] = route.summary.to_json()
     }
-    let params = path_parameters(route.path, version)
-    if params.length() > 0 {
-      op["parameters"] = params.to_json()
+    match route.endpoint {
+      // A typed route: walk its descriptor once for parameters, request body,
+      // responses, and any hoisted component schemas.
+      Some(ep) => emit_endpoint(op, ep, defs, version)
+      // An untyped route: the `:name` path params and a default 200 response.
+      None => {
+        let params = path_parameters(route.path, version)
+        if params.length() > 0 {
+          op["parameters"] = params.to_json()
+        }
+        let ok : Map[String, Json] = Map([("description", "OK".to_json())])
+        let responses : Map[String, Json] = Map([("200", ok.to_json())])
+        op["responses"] = responses.to_json()
+      }
     }
-    let ok : Map[String, Json] = Map([("description", "OK".to_json())])
-    let responses : Map[String, Json] = Map([("200", ok.to_json())])
-    op["responses"] = responses.to_json()
     let item = match paths.get(route.path) {
       Some(Object(m)) => m
       _ => Map([])
@@ -90,6 +99,17 @@ pub fn App::openapi(
     ("info", info.to_json()),
     ("paths", paths.to_json()),
   ])
+  // Hoisted named object schemas: `components/schemas` in 3.x, `definitions`
+  // in Swagger 2.0.
+  if !defs.is_empty() {
+    match version {
+      Swagger20 => doc["definitions"] = defs.to_json()
+      _ => {
+        let comp : Map[String, Json] = Map([("schemas", defs.to_json())])
+        doc["components"] = comp.to_json()
+      }
+    }
+  }
   doc.to_json()
 }
 

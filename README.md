@@ -42,7 +42,8 @@ let docs_page = @moonapi.swagger_ui()           // a Swagger UI page
 ## What's here (`v0`)
 
 - **Routing** — `App::get/post/put/patch/delete/route`, `:param` path segments extracted into `Context::param`, correct `404` (no path) vs `405` (path but not method).
-- **Multi-version OpenAPI** — `App::openapi` / `openapi_json` emit **Swagger 2.0, OpenAPI 3.0.3, and OpenAPI 3.1.0** from the same route descriptors, because a good FastAPI is not pinned to one spec version.
+- **Descriptor tree** — a runtime `Schema` / `Param` / `Endpoint` tree (a one-first-class-value substitute for FastAPI's from-signature reflection) that a typed route carries. Walked **once** to (a) emit **complete** OpenAPI request/response body schemas — objects, arrays, scalars, `required`, with named models hoisted under `components/schemas` and referenced by `$ref` — and (b) drive request validation off the same tree. User structs describe themselves with `derive(ToJson)` + a `T::schema()` associated function + a one-line `ToSchema` bridge (the mctl-friendly shape).
+- **Multi-version OpenAPI** — `App::openapi` / `openapi_json` emit **Swagger 2.0, OpenAPI 3.0.3, and OpenAPI 3.1.0** from the same routes and descriptors (3.x `requestBody` + `components/schemas`; 2.0 body-parameter + `definitions`), because a good FastAPI is not pinned to one spec version.
 - **Swagger UI** — `swagger_ui()` returns a ready-to-serve documentation page.
 - **Responses** — `text` and `json` helpers over `moonasgi.Response`.
 
@@ -50,7 +51,7 @@ Verified across all backends (`wasm`, `wasm-gc`, `js`, `native`) in CI, 0 warnin
 
 ## Roadmap (transliterating FastAPI)
 
-Typed extractors (`Json[T]` / `Query[T]` / `Path[T]`) with `derive(FromJson)` validation and structured 422s; a runtime `Endpoint`/`Schema` descriptor tree walked once for validation + full OpenAPI schemas + dependency injection (the faithful, explicit equivalent of FastAPI's from-signature reflection); middleware, security (API-Key / Basic / JWT), and codegen'd request schemas via `moonctl`.
+The descriptor tree (`Endpoint` / `Param` / `Schema`) is in place — walked once for full OpenAPI 3.1 body schemas and validation. Next: `derive(FromJson)` extractors that deserialise a validated body into a struct; a dependency-injection container (provider registry + `yield` teardown + overrides); the full extractor set (`Header` / `Cookie` / `Form` / `File` with a self-built multipart parser); security (OAuth2 password + scopes, JWT); response-model filtering, exception handlers, CORS / GZip middleware, background tasks, streaming / SSE, WS routes, and codegen'd request schemas via `moonctl`.
 
 ## License
 
