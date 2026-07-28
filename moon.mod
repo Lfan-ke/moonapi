@@ -1,6 +1,6 @@
 name = "Lfan-ke/moonapi"
 
-version = "0.4.0"
+version = "0.5.0"
 
 readme = "README.md"
 
@@ -18,7 +18,7 @@ keywords = [
   "moonbit",
 ]
 
-description = "moonapi — a typed web framework for MoonBit (← FastAPI): routing, path/query params, and multi-version OpenAPI/Swagger (2.0 / 3.0 / 3.1) generation, on the moonasgi SEAM."
+description = "moonapi — a typed web framework for MoonBit (← FastAPI): routing, typed extractors, descriptor-driven validation, multi-version OpenAPI/Swagger (2.0 / 3.0 / 3.1), dependency injection, OAuth2 password-bearer with self-built HS256 JWT and scopes, multipart/urlencoded form and file extractors, and response_model filtering, on the moonasgi SEAM."
 
 import {
   "Lfan-ke/moonasgi@0.1.0",

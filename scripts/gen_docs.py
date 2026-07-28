@@ -35,10 +35,36 @@ SECTIONS = [
      "one-shot resolution with per-request caching, and yield-style teardown run "
      "LIFO around the handler - the explicit MoonBit equivalent of FastAPI's "
      "Depends."),
+    ("multipart", "multipart.mbt", "Form & file extractors",
+     "Context::form parses an urlencoded body (percent- and plus-decoded) and a "
+     "multipart/form-data body, splitting the boundary stream into FormFields and "
+     "byte-exact UploadFiles - FastAPI's Form(...) and File(...) parameters."),
+    ("security", "security.mbt", "OAuth2 & bearer security",
+     "OAuth2 password-bearer: create_access_token issues a scoped HS256 JWT, and "
+     "OAuth2PasswordBearer reads the Authorization header, verifies the token, and "
+     "enforces scopes - 401 on a missing / invalid / expired token, 403 on an "
+     "insufficient scope. The MoonBit equivalent of FastAPI's Security(...)."),
+    ("jwt", "jwt.mbt", "JWT (HS256)",
+     "Sign and verify compact HS256 JSON Web Tokens over the self-built HMAC, with "
+     "base64url segments, exp / nbf checks, constant-time signature comparison, and "
+     "refusal of the alg:none downgrade."),
+    ("crypto", "crypto.mbt", "SHA-256 / HMAC",
+     "The self-built signing primitives behind JWT: SHA-256 (FIPS 180-4), "
+     "HMAC-SHA256 (RFC 2104), and a constant-time byte comparison - core ships no "
+     "crypto, so these are implemented here and checked against the NIST / RFC "
+     "4231 vectors."),
+    ("response_model", "response_model.mbt", "response_model",
+     "filter_response / json_model validate a handler's return value against a "
+     "declared Schema and project it down to exactly the model's fields, so a route "
+     "exposes only what it promised - FastAPI's response_model."),
     ("demo", "demo.mbt", "Worked example",
      "User structs that describe their own schema (derive(ToJson) + a T::schema() "
      "associated function + a ToSchema bridge) and a demo app whose request and "
      "response bodies surface fully-typed in openapi.json - the mctl-friendly shape."),
+    ("security_demo", "security_demo.mbt", "OAuth2 worked example",
+     "oauth2_app wires the security layer end to end: a /token endpoint that issues "
+     "a scoped JWT and two protected routes, one requiring the items scope - "
+     "FastAPI's security tutorial in explicit MoonBit form."),
 ]
 
 KIND = {"struct": "struct", "enum": "enum", "fn": "fn", "type": "type", "let": "let"}
@@ -234,7 +260,7 @@ def main():
             'transport lives in the server (mooncat) that runs the app.</p>'
             '<div class="badges">'
             '<a href="https://github.com/Lfan-ke/moonapi/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Lfan-ke/moonapi/ci.yml?branch=master&label=CI&logo=github"></a>'
-            '<img alt="tests" src="https://img.shields.io/badge/tests-3%20passing%20%C3%974%20backends-0ca678">'
+            '<img alt="tests" src="https://img.shields.io/badge/tests-58%20passing%20%C3%974%20backends-0ca678">'
             '<a href="https://github.com/Lfan-ke/moonapi"><img alt="GitHub" src="https://img.shields.io/badge/GitHub-source-24292f?logo=github"></a>'
             '<img alt="license" src="https://img.shields.io/badge/license-Apache--2.0-6d5efc"></div>'
             '<div class="install"><span class="prompt">$</span><code>moon add Lfan-ke/moonapi</code>'

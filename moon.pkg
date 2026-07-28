@@ -6,4 +6,5 @@ import {
   "moonbitlang/core/json",
   "moonbitlang/core/buffer",
   "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/encoding/base64",
 }
