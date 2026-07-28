@@ -1,0 +1,9 @@
+// moonapi: a typed web framework (← FastAPI) on the moonasgi SEAM. Backend-agnostic
+// — it depends only on moonasgi, so it runs in-process on every backend; the
+// async transport lives in the server (mooncat) that serves its AsgiApp.
+import {
+  "Lfan-ke/moonasgi",
+  "moonbitlang/core/json",
+  "moonbitlang/core/buffer",
+  "moonbitlang/core/encoding/utf8",
+}
