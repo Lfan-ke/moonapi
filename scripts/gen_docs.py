@@ -12,6 +12,9 @@ SECTIONS = [
     ("openapi", "openapi.mbt", "OpenAPI & Swagger",
      "Multi-version OpenAPI / Swagger generation (2.0 / 3.0 / 3.1) from the same "
      "routes, and a ready-to-serve Swagger UI page."),
+    ("validation", "validation.mbt", "Extraction & validation",
+     "Typed extraction off the Context - query params, JSON body, and single JSON "
+     "fields - plus FastAPI-shaped ValidationError values and 422 responses."),
 ]
 
 KIND = {"struct": "struct", "enum": "enum", "fn": "fn", "type": "type", "let": "let"}
