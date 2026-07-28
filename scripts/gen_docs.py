@@ -25,6 +25,16 @@ SECTIONS = [
      "Typed extraction off the Context - query / cookie params, JSON body, single "
      "JSON fields - plus descriptor-driven validation and FastAPI-shaped "
      "ValidationError values and 422 responses."),
+    ("body", "body.mbt", "Typed body extractors",
+     "Context::body deserialises the JSON body into a derive(FromJson) struct, and "
+     "Context::body_validated checks it against the endpoint descriptor first - "
+     "yielding a FastAPI-shaped 422 error list on failure and the built value on "
+     "success, all off one source of truth."),
+    ("di", "di.mbt", "Dependency injection",
+     "A container (provider registry + dependency_overrides), request-scoped "
+     "one-shot resolution with per-request caching, and yield-style teardown run "
+     "LIFO around the handler - the explicit MoonBit equivalent of FastAPI's "
+     "Depends."),
     ("demo", "demo.mbt", "Worked example",
      "User structs that describe their own schema (derive(ToJson) + a T::schema() "
      "associated function + a ToSchema bridge) and a demo app whose request and "
