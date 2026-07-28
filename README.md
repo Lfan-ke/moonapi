@@ -49,14 +49,25 @@ let docs_page = @moonapi.swagger_ui()           // a Swagger UI page
 - **OAuth2 + JWT security** — a `/token` password-grant endpoint issues an HS256 JWT (`create_access_token`), and an `OAuth2PasswordBearer` reads the `Authorization: Bearer` header, verifies the token, and enforces scopes: `401` on a missing or invalid/expired token, `403` when a valid token lacks a required scope. The SHA-256 / HMAC-SHA256 pair is self-built (`crypto.mbt`), checked against the NIST and RFC 4231 vectors; the `alg: "none"` downgrade is refused and signatures compare in constant time.
 - **Form & file extractors** — `Context::form` parses both an `application/x-www-form-urlencoded` body (percent- and `+`-decoded) and a `multipart/form-data` body, splitting the boundary stream into `FormField`s and byte-exact `UploadFile`s (filename + content-type + raw bytes). `Context::oauth2_password_form` reads the OAuth2 password form off it.
 - **response_model** — `filter_response` / `json_model` validate a handler's return value against a declared `Schema` and project it down to exactly the model's fields, so a route can hold a richer object internally than it exposes (an id, a password hash) and still emit only what it promised.
+- **Middleware & exception handlers** — an outer middleware chain (`App::middleware`) with `cors(...)` (preflight + actual-request headers, configurable origins/methods/headers, credentials, exposed headers) and `gzip(...)`, plus exception handlers (`App::exception_handler`): a handler `raise`s an `HttpException` and the app maps it to a response, falling through to a built-in `{"detail": ...}` for `HttpException` and a `500` for anything else.
+- **Server-Sent Events** — `ServerSentEvent` frames per the WHATWG event-stream format (`id` / `event` / `retry` / multi-line `data` / `:` comments) and `sse_response` builds the `text/event-stream` envelope.
+- **WebSocket routes** — `App::websocket(path, handler)` over the moonasgi WS SEAM. The handler drives a `WebSocket` (accept / receive / send / close); it's a synchronous core, so `drive_websocket` runs it against an in-memory frame queue in a test and `App::to_asgi` serves it over the async transport.
+- **Security schemes** — `App::add_security_scheme` surfaces the OAuth2 / JWT layer in the emitted spec (`components/securitySchemes` in 3.x, `securityDefinitions` in 2.0); `OAuth2PasswordBearer::scheme` builds the password-flow object.
 - **Swagger UI** — `swagger_ui()` returns a ready-to-serve documentation page.
 - **Responses** — `text` and `json` helpers over `moonasgi.Response`.
 
 Verified across all backends (`wasm`, `wasm-gc`, `js`, `native`) in CI, 0 warnings under `--deny-warn`.
 
+## Design notes
+
+Two places make an explicit, documented trade-off rather than a silent shortcut:
+
+- **GZip** produces a valid RFC 1952 gzip stream — correct header, CRC-32, and ISIZE — from RFC 1951 stored (uncompressed) DEFLATE blocks. Any client decompresses it; it does not yet shrink the payload (LZ77 + Huffman is next), so it's a conformant encoder without a compression ratio.
+- **WebSocket** handlers are a synchronous core: the same handler runs in a test and under a server. Because the core can't suspend on the async transport (MoonBit runs async only in an async context), the serving shell buffers the client's inbound frames, runs the handler, then emits its frames. Content and order are preserved — exact for echo, broadcast, and request-reply — but it doesn't interleave live per-frame with the client.
+
 ## Roadmap (transliterating FastAPI)
 
-The descriptor tree (`Endpoint` / `Param` / `Schema`) is in place — walked once for full OpenAPI 3.1 body schemas and validation — with the typed `derive(FromJson)` body extractors (`Context::body` / `body_validated`) and the dependency-injection container on top. This release adds the security and form layers: OAuth2 password-bearer with self-built HS256 JWT and scopes, the `Form` / `File` extractors over a self-built urlencoded + multipart parser, and `response_model` filtering. Next: RS256 / ES256 signing; exception handlers; CORS / GZip middleware; background tasks; streaming / SSE; WS routes; sub-app mounting; and codegen'd request schemas via `moonctl`. Security scheme objects in the emitted OpenAPI document are still to come.
+The descriptor tree (`Endpoint` / `Param` / `Schema`) drives OpenAPI body schemas and validation; on top sit the typed `derive(FromJson)` body extractors, the dependency-injection container, the OAuth2 password-bearer security layer with self-built HS256 JWT, the `Form` / `File` extractors, and `response_model` filtering. This release adds the middleware stack (CORS, GZip, exception handlers), Server-Sent Events, WebSocket routes, and security scheme objects in the emitted spec. Next: RS256 / ES256 signing; per-operation `security` requirements wired from the schemes; background tasks; sub-app mounting; static files and templates; and codegen'd request schemas via `moonctl`.
 
 ## License
 

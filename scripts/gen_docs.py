@@ -44,6 +44,26 @@ SECTIONS = [
      "OAuth2PasswordBearer reads the Authorization header, verifies the token, and "
      "enforces scopes - 401 on a missing / invalid / expired token, 403 on an "
      "insufficient scope. The MoonBit equivalent of FastAPI's Security(...)."),
+    ("security_scheme", "security_scheme.mbt", "OpenAPI security schemes",
+     "SecurityScheme objects emitted into the generated spec - OAuth2 password "
+     "flow, HTTP bearer (JWT), API keys, and Basic - under components/"
+     "securitySchemes in 3.x and securityDefinitions in Swagger 2.0, so the OAuth2 "
+     "/ JWT layer is described to clients."),
+    ("middleware", "middleware.mbt", "Middleware & exception handlers",
+     "The outer middleware chain: cors (preflight + actual-request headers, "
+     "configurable origins / methods / headers / credentials), gzip (a valid RFC "
+     "1952 stream from stored DEFLATE blocks, with a self-built CRC-32), and "
+     "exception handlers that map a raised HttpException to a response, with a "
+     "built-in 500 fallback."),
+    ("sse", "sse.mbt", "Server-Sent Events",
+     "ServerSentEvent frames per the WHATWG event-stream format - id / event / "
+     "retry / multi-line data / comment keep-alives - and sse_response builds the "
+     "text/event-stream envelope."),
+    ("websocket", "websocket.mbt", "WebSocket routes",
+     "App::websocket over the moonasgi WS SEAM. The handler drives a WebSocket "
+     "(accept / receive / send / close) as a synchronous core, so drive_websocket "
+     "runs it against an in-memory frame queue in a test and the serving shell "
+     "runs it over the async transport."),
     ("jwt", "jwt.mbt", "JWT (HS256)",
      "Sign and verify compact HS256 JSON Web Tokens over the self-built HMAC, with "
      "base64url segments, exp / nbf checks, constant-time signature comparison, and "
@@ -260,7 +280,7 @@ def main():
             'transport lives in the server (mooncat) that runs the app.</p>'
             '<div class="badges">'
             '<a href="https://github.com/Lfan-ke/moonapi/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Lfan-ke/moonapi/ci.yml?branch=master&label=CI&logo=github"></a>'
-            '<img alt="tests" src="https://img.shields.io/badge/tests-58%20passing%20%C3%974%20backends-0ca678">'
+            '<img alt="tests" src="https://img.shields.io/badge/tests-86%20passing%20%C3%974%20backends-0ca678">'
             '<a href="https://github.com/Lfan-ke/moonapi"><img alt="GitHub" src="https://img.shields.io/badge/GitHub-source-24292f?logo=github"></a>'
             '<img alt="license" src="https://img.shields.io/badge/license-Apache--2.0-6d5efc"></div>'
             '<div class="install"><span class="prompt">$</span><code>moon add Lfan-ke/moonapi</code>'

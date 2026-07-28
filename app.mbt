@@ -52,8 +52,12 @@ pub fn Context::param(self : Context, name : String) -> String? {
 }
 
 ///|
-/// A moonapi route handler: request context in, response out.
-pub type ApiHandler = (Context) -> @moonasgi.Response
+/// A moonapi route handler: request context in, response out. It may `raise` an
+/// `HttpException` (or any error) instead of returning — the app catches it and
+/// maps it to a response through the registered exception handlers, so handlers
+/// read like FastAPI's `raise HTTPException(...)` rather than threading a
+/// `Result` back by hand. A plain non-raising closure is still a valid handler.
+pub type ApiHandler = (Context) -> @moonasgi.Response raise
 
 ///|
 struct Route {
@@ -65,16 +69,56 @@ struct Route {
 }
 
 ///|
-/// A moonapi application: an ordered set of routes that compiles to a moonasgi
-/// `AsgiApp` any server (mooncat) can run.
+/// A moonapi application: routes, WebSocket routes, an outer middleware chain,
+/// exception handlers, and the security schemes surfaced in the OpenAPI
+/// document. Compiles to a moonasgi `AsgiApp` any server (mooncat) can run.
 pub struct App {
   routes : Array[Route]
+  ws_routes : Array[WsRoute]
+  middlewares : Array[@moonasgi.Middleware]
+  exception_handlers : Array[ExceptionHandler]
+  security_schemes : Array[(String, SecurityScheme)]
 }
 
 ///|
 /// Create an empty application.
 pub fn App::new() -> App {
-  { routes: [] }
+  {
+    routes: [],
+    ws_routes: [],
+    middlewares: [],
+    exception_handlers: [],
+    security_schemes: [],
+  }
+}
+
+///|
+/// Add an outer middleware. Middlewares wrap the router as an onion; the first
+/// registered is the outermost (it sees the request first and the response
+/// last). `cors(...)` and `gzip(...)` are middlewares.
+pub fn App::middleware(self : App, mw : @moonasgi.Middleware) -> Unit {
+  self.middlewares.push(mw)
+}
+
+///|
+/// Register an exception handler. On a raised error the handlers are tried in
+/// registration order; the first to return `Some(response)` wins. An
+/// unhandled error falls through to the built-in mapping — an `HttpException`
+/// becomes its own `status` / `detail`, anything else a `500`.
+pub fn App::exception_handler(self : App, h : ExceptionHandler) -> Unit {
+  self.exception_handlers.push(h)
+}
+
+///|
+/// Declare a security scheme under `name`, surfaced in the emitted OpenAPI
+/// document (`components/securitySchemes` in 3.x, `securityDefinitions` in
+/// Swagger 2.0) so the generated spec describes how to authenticate.
+pub fn App::add_security_scheme(
+  self : App,
+  name : String,
+  scheme : SecurityScheme,
+) -> Unit {
+  self.security_schemes.push((name, scheme))
 }
 
 ///|
@@ -205,9 +249,26 @@ pub fn json(status : Int, value : Json) -> @moonasgi.Response {
 }
 
 ///|
-/// Route a request to its handler, returning 404 when no path matches and 405
-/// when a path matches but no method does.
-pub fn App::handle(
+/// Try each registered exception handler in order, then the built-in mapping.
+fn App::dispatch_exception(
+  self : App,
+  ctx : Context,
+  err : Error,
+) -> @moonasgi.Response {
+  for h in self.exception_handlers {
+    match h(ctx, err) {
+      Some(resp) => return resp
+      None => ()
+    }
+  }
+  default_exception_response(err)
+}
+
+///|
+/// The routing + exception core, inside the middleware chain: match a route,
+/// run its (possibly raising) handler, and turn any raised error into a
+/// response. 404 when no path matches, 405 when a path matches but no method.
+fn App::route_and_dispatch(
   self : App,
   request : @moonasgi.Request,
 ) -> @moonasgi.Response {
@@ -218,7 +279,9 @@ pub fn App::handle(
       Some(params) =>
         if route.verb == verb {
           let ctx : Context = { request, params }
-          return (route.handler)(ctx)
+          return (route.handler)(ctx) catch {
+            e => self.dispatch_exception(ctx, e)
+          }
         } else {
           method_mismatch = true
         }
@@ -230,6 +293,18 @@ pub fn App::handle(
   } else {
     text(404, "Not Found")
   }
+}
+
+///|
+/// Route a request to its handler through the middleware chain, returning 404
+/// when no path matches and 405 when a path matches but no method does. Any
+/// error a handler raises is mapped to a response by the exception handlers.
+pub fn App::handle(
+  self : App,
+  request : @moonasgi.Request,
+) -> @moonasgi.Response {
+  let base : @moonasgi.Handler = req => self.route_and_dispatch(req)
+  @moonasgi.compose(self.middlewares, base)(request)
 }
 
 ///|
@@ -272,6 +347,7 @@ pub fn App::to_asgi(self : App) -> @moonasgi.AsgiApp {
         )
         send(@moonasgi.Event::HttpResponseBody(body=resp.body, more_body=false))
       }
+      WebSocket(wss) => self.serve_websocket(wss, receive, send)
       _ => ()
     }
   }

@@ -99,16 +99,36 @@ pub fn App::openapi(
     ("info", info.to_json()),
     ("paths", paths.to_json()),
   ])
-  // Hoisted named object schemas: `components/schemas` in 3.x, `definitions`
-  // in Swagger 2.0.
-  if !defs.is_empty() {
-    match version {
-      Swagger20 => doc["definitions"] = defs.to_json()
-      _ => {
-        let comp : Map[String, Json] = Map([("schemas", defs.to_json())])
-        doc["components"] = comp.to_json()
+  // Hoisted named object schemas and the declared security schemes: under
+  // `components` (`schemas` / `securitySchemes`) in 3.x, or the top-level
+  // `definitions` / `securityDefinitions` in Swagger 2.0.
+  let has_schemes = self.security_schemes.length() > 0
+  match version {
+    Swagger20 => {
+      if !defs.is_empty() {
+        doc["definitions"] = defs.to_json()
+      }
+      if has_schemes {
+        doc["securityDefinitions"] = security_schemes_json(
+          self.security_schemes,
+          version,
+        )
       }
     }
+    _ =>
+      if !defs.is_empty() || has_schemes {
+        let comp : Map[String, Json] = Map([])
+        if !defs.is_empty() {
+          comp["schemas"] = defs.to_json()
+        }
+        if has_schemes {
+          comp["securitySchemes"] = security_schemes_json(
+            self.security_schemes,
+            version,
+          )
+        }
+        doc["components"] = comp.to_json()
+      }
   }
   doc.to_json()
 }
