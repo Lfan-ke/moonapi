@@ -62,7 +62,11 @@ pub fn App::openapi(
 ) -> Json {
   let paths : Map[String, Json] = Map([])
   let defs : Map[String, Json] = Map([])
-  for route in self.routes {
+  // Own routes plus every mounted sub-app's routes, each under its prefix.
+  let all_routes : Array[(String, Route)] = []
+  self.collect_routes("", all_routes)
+  for entry in all_routes {
+    let (full_path, route) = entry
     let op : Map[String, Json] = Map([])
     if route.summary != "" {
       op["summary"] = route.summary.to_json()
@@ -73,7 +77,7 @@ pub fn App::openapi(
       Some(ep) => emit_endpoint(op, ep, defs, version)
       // An untyped route: the `:name` path params and a default 200 response.
       None => {
-        let params = path_parameters(route.path, version)
+        let params = path_parameters(full_path, version)
         if params.length() > 0 {
           op["parameters"] = params.to_json()
         }
@@ -82,12 +86,17 @@ pub fn App::openapi(
         op["responses"] = responses.to_json()
       }
     }
-    let item = match paths.get(route.path) {
+    // Per-operation security requirements (← FastAPI's `Security(...)`).
+    match security_json(route.security) {
+      Some(s) => op["security"] = s
+      None => ()
+    }
+    let item = match paths.get(full_path) {
       Some(Object(m)) => m
       _ => Map([])
     }
     item[method_lower(route.verb)] = op.to_json()
-    paths[route.path] = item.to_json()
+    paths[full_path] = item.to_json()
   }
   let info : Map[String, Json] = Map([
     ("title", title.to_json()),
@@ -99,20 +108,21 @@ pub fn App::openapi(
     ("info", info.to_json()),
     ("paths", paths.to_json()),
   ])
-  // Hoisted named object schemas and the declared security schemes: under
-  // `components` (`schemas` / `securitySchemes`) in 3.x, or the top-level
-  // `definitions` / `securityDefinitions` in Swagger 2.0.
-  let has_schemes = self.security_schemes.length() > 0
+  // Hoisted named object schemas and the declared security schemes (the app's
+  // own plus every mounted sub-app's): under `components` (`schemas` /
+  // `securitySchemes`) in 3.x, or the top-level `definitions` /
+  // `securityDefinitions` in Swagger 2.0.
+  let schemes : Array[(String, SecurityScheme)] = []
+  let seen : Map[String, Bool] = Map([])
+  self.collect_security_schemes(schemes, seen)
+  let has_schemes = schemes.length() > 0
   match version {
     Swagger20 => {
       if !defs.is_empty() {
         doc["definitions"] = defs.to_json()
       }
       if has_schemes {
-        doc["securityDefinitions"] = security_schemes_json(
-          self.security_schemes,
-          version,
-        )
+        doc["securityDefinitions"] = security_schemes_json(schemes, version)
       }
     }
     _ =>
@@ -122,15 +132,70 @@ pub fn App::openapi(
           comp["schemas"] = defs.to_json()
         }
         if has_schemes {
-          comp["securitySchemes"] = security_schemes_json(
-            self.security_schemes,
-            version,
-          )
+          comp["securitySchemes"] = security_schemes_json(schemes, version)
         }
         doc["components"] = comp.to_json()
       }
   }
   doc.to_json()
+}
+
+///|
+/// Collect this app's routes and every mounted sub-app's routes into `out`, each
+/// paired with its full path (the mount prefixes joined on). Recursive, so
+/// nested mounts flatten into one path space for the merged OpenAPI document.
+fn App::collect_routes(
+  self : App,
+  prefix : String,
+  out : Array[(String, Route)],
+) -> Unit {
+  for route in self.routes {
+    out.push((join_prefix(prefix, route.path), route))
+  }
+  for entry in self.mounts {
+    let (mp, sub) = entry
+    sub.collect_routes(join_prefix(prefix, mp), out)
+  }
+}
+
+///|
+/// Collect this app's security schemes and every mounted sub-app's, first-writer
+/// wins (a parent's scheme shadows a sub-app's same-named one). `seen` tracks
+/// names already taken.
+fn App::collect_security_schemes(
+  self : App,
+  out : Array[(String, SecurityScheme)],
+  seen : Map[String, Bool],
+) -> Unit {
+  for pair in self.security_schemes {
+    if !seen.contains(pair.0) {
+      seen[pair.0] = true
+      out.push(pair)
+    }
+  }
+  for entry in self.mounts {
+    entry.1.collect_security_schemes(out, seen)
+  }
+}
+
+///|
+/// Join a mount `prefix` and a route `path` into one path by concatenating their
+/// segments, so `("/sub", "/items")` becomes `/sub/items` and a root path stays
+/// under the prefix. An all-empty result is the root `"/"`.
+fn join_prefix(prefix : String, path : String) -> String {
+  let segs = segments(prefix)
+  for s in segments(path) {
+    segs.push(s)
+  }
+  if segs.is_empty() {
+    return "/"
+  }
+  let sb = StringBuilder::new()
+  for s in segs {
+    sb.write_string("/")
+    sb.write_string(s)
+  }
+  sb.to_string()
 }
 
 ///|

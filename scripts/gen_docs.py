@@ -49,12 +49,25 @@ SECTIONS = [
      "flow, HTTP bearer (JWT), API keys, and Basic - under components/"
      "securitySchemes in 3.x and securityDefinitions in Swagger 2.0, so the OAuth2 "
      "/ JWT layer is described to clients."),
+    ("security_wiring", "security_wiring.mbt", "Per-operation security",
+     "A SecurityRequirement attaches a declared scheme (and its scopes) to a "
+     "route: emitted as the operation's OpenAPI security array, and - when the "
+     "scheme was registered with an enforcer via App::secure_oauth2 - enforced "
+     "before the handler (401 unauthenticated, 403 on a missing scope)."),
+    ("background", "background.mbt", "Background tasks",
+     "BackgroundTasks queues thunks a background-aware route schedules; the app "
+     "runs them, in order, after the response is sent - FastAPI's BackgroundTasks."),
     ("middleware", "middleware.mbt", "Middleware & exception handlers",
      "The outer middleware chain: cors (preflight + actual-request headers, "
-     "configurable origins / methods / headers / credentials), gzip (a valid RFC "
-     "1952 stream from stored DEFLATE blocks, with a self-built CRC-32), and "
+     "configurable origins / methods / headers / credentials), gzip (a real "
+     "DEFLATE compressor, below), per-status handlers for custom error pages, and "
      "exception handlers that map a raised HttpException to a response, with a "
      "built-in 500 fallback."),
+    ("deflate", "deflate.mbt", "DEFLATE / gzip compression",
+     "A real RFC 1951 DEFLATE compressor - LZ77 back-reference matching over a "
+     "32 KiB window, coded with the fixed Huffman table - and a companion inflate "
+     "that decodes stored and fixed-Huffman blocks, so gzip output round-trips and "
+     "any conforming inflater (gzip, zlib) reads it."),
     ("sse", "sse.mbt", "Server-Sent Events",
      "ServerSentEvent frames per the WHATWG event-stream format - id / event / "
      "retry / multi-line data / comment keep-alives - and sse_response builds the "

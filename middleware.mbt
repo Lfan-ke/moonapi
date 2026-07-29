@@ -258,11 +258,10 @@ fn CorsConfig::preflight_response(
 /// already content-encoded. Sets `Content-Encoding: gzip`, updates
 /// `Content-Length`, and adds `Vary: Accept-Encoding`.
 ///
-/// The gzip stream is a complete, valid RFC 1952 container — correct header,
-/// CRC-32, and ISIZE — built from RFC 1951 stored (uncompressed) DEFLATE
-/// blocks. Any client decompresses it losslessly; what it does not yet do is
-/// shrink the payload (LZ77 + Huffman coding is the next step), so this is a
-/// conformant encoder without a compression ratio, not a stub.
+/// The gzip stream is a complete RFC 1952 container — correct header, CRC-32, and
+/// ISIZE — around a real RFC 1951 DEFLATE payload: LZ77 back-references coded with
+/// the fixed Huffman table (`deflate.mbt`), so the body actually shrinks. Dynamic
+/// Huffman would tighten the ratio further and is the documented next step.
 pub fn gzip(min_size? : Int = 500) -> @moonasgi.Middleware {
   downstream => {
     request => {
@@ -327,9 +326,9 @@ fn write_u32_le(buf : Buffer, n : UInt) -> Unit {
 }
 
 ///|
-/// Encode `data` as a gzip stream (RFC 1952) whose DEFLATE payload is a run of
-/// stored blocks (RFC 1951 §3.2.4). A stored block carries at most 65535 bytes,
-/// so longer input splits into several; the last is flagged BFINAL.
+/// Encode `data` as a gzip stream (RFC 1952): the 10-byte header, the real
+/// DEFLATE payload (`deflate_encode` — LZ77 + fixed Huffman, RFC 1951), then the
+/// CRC-32 and ISIZE trailer, both little-endian over the original bytes.
 fn gzip_encode(data : Bytes) -> Bytes {
   let buf = Buffer()
   // gzip header: magic, CM=deflate(8), no flags, mtime=0, XFL=0, OS=unknown.
@@ -343,34 +342,8 @@ fn gzip_encode(data : Bytes) -> Bytes {
   buf.write_byte(b'\x00')
   buf.write_byte(b'\x00')
   buf.write_byte(b'\xff')
-  let n = data.length()
-  let max_block = 65535
-  if n == 0 {
-    // A single empty final stored block.
-    buf.write_byte(b'\x01')
-    buf.write_byte(b'\x00')
-    buf.write_byte(b'\x00')
-    buf.write_byte(b'\xff')
-    buf.write_byte(b'\xff')
-  } else {
-    let mut off = 0
-    while off < n {
-      let len = if n - off < max_block { n - off } else { max_block }
-      let final_block = off + len == n
-      buf.write_byte(if final_block { b'\x01' } else { b'\x00' })
-      let len_u = len.reinterpret_as_uint()
-      buf.write_byte((len_u & 0xFF).to_byte())
-      buf.write_byte(((len_u >> 8) & 0xFF).to_byte())
-      let nlen = len_u ^ 0xFFFF
-      buf.write_byte((nlen & 0xFF).to_byte())
-      buf.write_byte(((nlen >> 8) & 0xFF).to_byte())
-      for i = 0; i < len; i = i + 1 {
-        buf.write_byte(data[off + i])
-      }
-      off = off + len
-    }
-  }
+  buf.write_bytes(deflate_encode(data))
   write_u32_le(buf, crc32(data))
-  write_u32_le(buf, n.reinterpret_as_uint())
+  write_u32_le(buf, data.length().reinterpret_as_uint())
   buf.to_bytes()
 }

@@ -109,20 +109,78 @@ test "gzip: encode is a valid gzip container with the right trailer" {
   assert_eq(out[0].to_int(), 0x1f)
   assert_eq(out[1].to_int(), 0x8b)
   assert_eq(out[2].to_int(), 0x08)
-  // 10 header + one stored block (1 + 2 LEN + 2 NLEN + 5 data) + 8 trailer.
-  assert_eq(out.length(), 28)
-  // stored block: BFINAL=1, LEN=5 (LE), NLEN=~5 (LE).
-  assert_eq(out[10].to_int(), 0x01)
-  assert_eq(out[11].to_int(), 5)
-  assert_eq(out[12].to_int(), 0)
-  assert_eq(out[13].to_int(), 0xfa)
-  assert_eq(out[14].to_int(), 0xff)
   // ISIZE trailer == input length (5), little-endian in the last four bytes.
   let n = out.length()
   assert_eq(out[n - 4].to_int(), 5)
   assert_eq(out[n - 3].to_int(), 0)
   assert_eq(out[n - 2].to_int(), 0)
   assert_eq(out[n - 1].to_int(), 0)
+  // CRC-32 of the input sits in the four bytes before ISIZE (zlib.crc32(b"hello")).
+  let crc = out[n - 8].to_int() |
+    (out[n - 7].to_int() << 8) |
+    (out[n - 6].to_int() << 16) |
+    (out[n - 5].to_int() << 24)
+  assert_eq(crc.reinterpret_as_uint(), 0x3610A686)
+}
+
+///|
+/// The raw DEFLATE payload of a gzip stream: header is 10 bytes, trailer 8.
+fn deflate_payload(gz : Bytes) -> Bytes {
+  let buf = Buffer()
+  for i = 10; i < gz.length() - 8; i = i + 1 {
+    buf.write_byte(gz[i])
+  }
+  buf.to_bytes()
+}
+
+///|
+/// `unit` repeated `n` times as bytes — a compressible fixture with real matches.
+fn repeat_bytes(unit : String, n : Int) -> Bytes {
+  let sb = StringBuilder::new()
+  for _i = 0; _i < n; _i = _i + 1 {
+    sb.write_string(unit)
+  }
+  @utf8.encode(sb.to_string())
+}
+
+///|
+test "deflate: fixed-Huffman round-trips through inflate" {
+  // Empty, a short literal run, and a highly repetitive body (real matches).
+  let cases = [
+    b"",
+    b"a",
+    b"hello, hello, hello, world",
+    xbytes(2000),
+    repeat_bytes("the quick brown fox ", 40),
+  ]
+  for original in cases {
+    let round = inflate(deflate_encode(original))
+    assert_eq(round, original)
+  }
+}
+
+///|
+test "deflate: compresses a repetitive payload (a real ratio)" {
+  // 2000 identical bytes collapse to a handful of length/distance codes.
+  let original = xbytes(2000)
+  let compressed = deflate_encode(original)
+  assert_eq(compressed.length() < original.length(), true)
+  assert_eq(compressed.length() < 60, true)
+  // And it still decodes back to the original.
+  assert_eq(inflate(compressed), original)
+}
+
+///|
+test "gzip: the middleware body inflates back to the response and is smaller" {
+  let body = repeat_bytes("moonapi gzip middleware payload ", 60)
+  let app = App::new()
+  app.middleware(gzip(min_size=100))
+  app.get("/j", _ctx => @moonasgi.Response::new(200, [], body))
+  let z = app.handle(req_h("GET", "/j", [("accept-encoding", "gzip")]))
+  assert_eq(hdr(z, "content-encoding"), "gzip")
+  // The gzip body is smaller than the source and inflates back byte-exact.
+  assert_eq(z.body.length() < body.length(), true)
+  assert_eq(inflate(deflate_payload(z.body)), body)
 }
 
 ///|
