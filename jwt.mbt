@@ -246,6 +246,55 @@ pub fn jwt_verify_rs256(
 }
 
 ///|
+/// Read the header segment's `alg`, raising `UnsupportedAlg` for anything but
+/// `ES256` — the ES256 counterpart of `check_alg`, refusing an `alg` downgrade.
+fn check_alg_es256(header_seg : String) -> Unit raise JwtError {
+  let text = @utf8.decode_lossy(base64url_decode(header_seg)[:])
+  let json = @json.parse(text) catch {
+    _ => raise MalformedToken("header is not valid JSON")
+  }
+  match json {
+    Object(m) =>
+      match m.get("alg") {
+        Some(String("ES256")) => ()
+        Some(String(other)) => raise UnsupportedAlg(other)
+        _ => raise UnsupportedAlg("missing alg")
+      }
+    _ => raise MalformedToken("header is not a JSON object")
+  }
+}
+
+///|
+/// Verify a compact ES256 JWT and return its claims. Checks three segments; the
+/// header `alg` is `ES256`; the ECDSA-P256 / SHA-256 signature (raw `r || s`, the
+/// JWS encoding) verifies against `key`; and the `exp` / `nbf` time claims. Raises
+/// the matching `JwtError`; a tampered payload or signature fails at
+/// `BadSignature`.
+pub fn jwt_verify_es256(
+  token : String,
+  key : EcdsaPublicKey,
+  now_secs : Int64,
+) -> Map[String, Json] raise JwtError {
+  let parts = split_char(token, '.')
+  if parts.length() != 3 {
+    raise MalformedToken("expected three segments")
+  }
+  let header_seg = parts[0]
+  let payload_seg = parts[1]
+  let sig_seg = parts[2]
+  check_alg_es256(header_seg)
+  let sig = base64url_decode(sig_seg)
+  if !ecdsa_p256_sha256_verify(
+      jwt_signing_input(header_seg, payload_seg),
+      sig,
+      key,
+    ) {
+    raise BadSignature
+  }
+  parse_and_check_claims(payload_seg, now_secs)
+}
+
+///|
 /// Read a `NumericDate` claim as seconds. RFC 7519 says it's a JSON number, but
 /// tokens in the wild sometimes carry it as a numeric string, so both are
 /// accepted; anything else (or an absent claim) is `None`.
