@@ -573,6 +573,7 @@ pub fn App::to_asgi(self : App) -> @moonasgi.AsgiApp {
           @moonasgi.Event::HttpResponseStart(
             status=resp.status,
             headers=resp.headers,
+            trailers=false,
           ),
         )
         send(@moonasgi.Event::HttpResponseBody(body=resp.body, more_body=false))
