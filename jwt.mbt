@@ -315,6 +315,50 @@ pub fn jwt_sign_es256(
 }
 
 ///|
+/// Read the header segment's `alg`, raising `UnsupportedAlg` for anything but
+/// `EdDSA` — the EdDSA counterpart of `check_alg`, refusing an `alg` downgrade.
+fn check_alg_eddsa(header_seg : String) -> Unit raise JwtError {
+  let text = @utf8.decode_lossy(base64url_decode(header_seg)[:])
+  let json = @json.parse(text) catch {
+    _ => raise MalformedToken("header is not valid JSON")
+  }
+  match json {
+    Object(m) =>
+      match m.get("alg") {
+        Some(String("EdDSA")) => ()
+        Some(String(other)) => raise UnsupportedAlg(other)
+        _ => raise UnsupportedAlg("missing alg")
+      }
+    _ => raise MalformedToken("header is not a JSON object")
+  }
+}
+
+///|
+/// Verify a compact EdDSA (Ed25519) JWT and return its claims (RFC 8037). Checks
+/// three segments; the header `alg` is `EdDSA`; the Ed25519 signature verifies
+/// against `key`; and the `exp` / `nbf` time claims. Raises the matching
+/// `JwtError`; a tampered payload or signature fails at `BadSignature`.
+pub fn jwt_verify_eddsa(
+  token : String,
+  key : Ed25519PublicKey,
+  now_secs : Int64,
+) -> Map[String, Json] raise JwtError {
+  let parts = split_char(token, '.')
+  if parts.length() != 3 {
+    raise MalformedToken("expected three segments")
+  }
+  let header_seg = parts[0]
+  let payload_seg = parts[1]
+  let sig_seg = parts[2]
+  check_alg_eddsa(header_seg)
+  let sig = base64url_decode(sig_seg)
+  if !ed25519_verify(key.key, jwt_signing_input(header_seg, payload_seg), sig) {
+    raise BadSignature
+  }
+  parse_and_check_claims(payload_seg, now_secs)
+}
+
+///|
 /// Read a `NumericDate` claim as seconds. RFC 7519 says it's a JSON number, but
 /// tokens in the wild sometimes carry it as a numeric string, so both are
 /// accepted; anything else (or an absent claim) is `None`.
