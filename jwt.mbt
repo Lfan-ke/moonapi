@@ -295,6 +295,26 @@ pub fn jwt_verify_es256(
 }
 
 ///|
+/// Sign a claims set as a compact JWT using ES256 (ECDSA P-256 / SHA-256 with the
+/// deterministic RFC 6979 nonce). The header is fixed to
+/// `{"alg":"ES256","typ":"JWT"}`; `key` is the P-256 private key. Returns
+/// `header.payload.signature`, each segment base64url-encoded.
+pub fn jwt_sign_es256(
+  claims : Map[String, Json],
+  key : EcdsaPrivateKey,
+) -> String {
+  let header_json =
+    #|{"alg":"ES256","typ":"JWT"}
+  let header_seg = base64url_encode(@utf8.encode(header_json))
+  let payload_seg = base64url_encode(@utf8.encode(claims.to_json().stringify()))
+  let sig = ecdsa_p256_sha256_sign(
+    jwt_signing_input(header_seg, payload_seg),
+    key,
+  )
+  header_seg + "." + payload_seg + "." + base64url_encode(sig)
+}
+
+///|
 /// Read a `NumericDate` claim as seconds. RFC 7519 says it's a JSON number, but
 /// tokens in the wild sometimes carry it as a numeric string, so both are
 /// accepted; anything else (or an absent claim) is `None`.

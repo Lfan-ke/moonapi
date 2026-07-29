@@ -184,3 +184,75 @@ pub fn ecdsa_p256_sha256_verify(
   }
   fmod_n(point.x) == r
 }
+
+///|
+/// Concatenate byte chunks.
+fn concat_bytes(parts : Array[Bytes]) -> Bytes {
+  let buf = Buffer()
+  for p in parts {
+    buf.write_bytes(p[:])
+  }
+  buf.to_bytes()
+}
+
+///|
+/// The deterministic nonce `k` for ECDSA over P-256 with SHA-256, per RFC 6979
+/// §3.2 (the HMAC-SHA256 DRBG). Deriving `k` from the private key and the message
+/// removes the need for an entropy source and makes signing reproducible — a
+/// reused or predictable `k` would leak the private key. `h1` is the SHA-256
+/// digest of the message.
+fn rfc6979_k(x : BigInt, h1 : Bytes) -> BigInt {
+  let x_oct = x.to_octets(length=32)
+  let h1_oct = fmod_n(BigInt::from_octets(h1[:])).to_octets(length=32)
+  let mut v = Bytes::make(32, b'\x01')
+  let mut k = Bytes::make(32, b'\x00')
+  k = hmac_sha256(k, concat_bytes([v, b"\x00", x_oct, h1_oct]))
+  v = hmac_sha256(k, v)
+  k = hmac_sha256(k, concat_bytes([v, b"\x01", x_oct, h1_oct]))
+  v = hmac_sha256(k, v)
+  for _attempt in 0..<1000 {
+    v = hmac_sha256(k, v)
+    let cand = BigInt::from_octets(v[:])
+    if cand >= (1 : BigInt) && cand < p256_n {
+      return cand
+    }
+    k = hmac_sha256(k, concat_bytes([v, b"\x00"]))
+    v = hmac_sha256(k, v)
+  }
+  1
+}
+
+///|
+/// An ECDSA P-256 private key: the scalar `d`. The ES256 signing key.
+pub(all) struct EcdsaPrivateKey {
+  d : BigInt
+}
+
+///|
+/// Build a P-256 private key from its hex-encoded scalar.
+pub fn EcdsaPrivateKey::from_hex(d_hex : String) -> EcdsaPrivateKey {
+  { d: BigInt::from_string(d_hex, radix=16) }
+}
+
+///|
+/// The public key `Q = d·G` for this private key.
+pub fn EcdsaPrivateKey::public_key(self : EcdsaPrivateKey) -> EcdsaPublicKey {
+  let q = ec_mul(self.d, { x: p256_gx, y: p256_gy, infinity: false })
+  { x: q.x, y: q.y }
+}
+
+///|
+/// ECDSA P-256 sign with SHA-256 — the ES256 signing primitive (FIPS 186-4
+/// §6.4.1) with the deterministic nonce of RFC 6979. Returns the raw `r || s`
+/// (two 32-byte big-endian integers), the encoding JWT uses. Deterministic, so
+/// the same message and key always produce the same signature.
+pub fn ecdsa_p256_sha256_sign(msg : Bytes, key : EcdsaPrivateKey) -> Bytes {
+  let h1 = sha256(msg)
+  let e = BigInt::from_octets(h1[:])
+  let g = { x: p256_gx, y: p256_gy, infinity: false }
+  let k = rfc6979_k(key.d, h1)
+  let rpt = ec_mul(k, g)
+  let r = fmod_n(rpt.x)
+  let s = fmod_n(inv_n(k) * (e + r * key.d))
+  concat_bytes([r.to_octets(length=32), s.to_octets(length=32)])
+}

@@ -63,3 +63,61 @@ test "jwt_verify_es256 accepts a real ES256 token and refuses an alg downgrade" 
   }
   assert_true(refused)
 }
+
+///|
+/// The RFC 6979 Appendix A.2.5 P-256 key.
+let rfc6979_d : String = "C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721"
+
+///|
+fn hexint(h : String) -> BigInt {
+  BigInt::from_string(h, radix=16)
+}
+
+///|
+test "ECDSA public key derivation d*G matches RFC 6979 A.2.5" {
+  let pk = EcdsaPrivateKey::from_hex(rfc6979_d).public_key()
+  assert_true(
+    pk.x ==
+    hexint("60FED4BA255A9D31C961EB74C6356D68C049B8923B61FA6CE669622E60F29FB6"),
+  )
+  assert_true(
+    pk.y ==
+    hexint("7903FE1008B8BC99A41AE9E95628BC64F2F1B20C2D7E9F5177A3C294D4462299"),
+  )
+}
+
+///|
+test "ES256 deterministic signing reproduces the RFC 6979 A.2.5 vectors" {
+  let key = EcdsaPrivateKey::from_hex(rfc6979_d)
+  // message "sample"
+  let s1 = ecdsa_p256_sha256_sign(b"sample", key)
+  assert_true(
+    BigInt::from_octets(s1[0:32]) ==
+    hexint("EFD48B2AACB6A8FD1140DD9CD45E81D69D2C877B56AAF991C34D0EA84EAF3716"),
+  )
+  assert_true(
+    BigInt::from_octets(s1[32:64]) ==
+    hexint("F7CB1C942D657C41D436C7A1B6E29F65F3E900DBB9AFF4064DC4AB2F843ACDA8"),
+  )
+  // message "test"
+  let s2 = ecdsa_p256_sha256_sign(b"test", key)
+  assert_true(
+    BigInt::from_octets(s2[0:32]) ==
+    hexint("F1ABB023518351CD71D881567B1EA663ED3EFCF6C5132B354F28D3B0B7D38367"),
+  )
+  assert_true(
+    BigInt::from_octets(s2[32:64]) ==
+    hexint("019F4113742A2B14BD25926B49C649155F267E60D3814B4C0CC84250E46F0083"),
+  )
+}
+
+///|
+test "jwt_sign_es256 / jwt_verify_es256 round-trip through moonapi's own verifier" {
+  let key = EcdsaPrivateKey::from_hex(rfc6979_d)
+  let claims : Map[String, Json] = Map([("sub", "42".to_json())])
+  let token = jwt_sign_es256(claims, key)
+  let got = jwt_verify_es256(token, key.public_key(), 0) catch {
+    _ => fail("round-trip verify raised")
+  }
+  assert_eq(got.get("sub"), Some("42".to_json()))
+}
