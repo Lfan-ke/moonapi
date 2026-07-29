@@ -176,6 +176,85 @@ pub fn ed25519_verify(pub_key : Bytes, msg : Bytes, sig : Bytes) -> Bool {
 }
 
 ///|
+/// Encode a point as its 32-byte little-endian compressed form (RFC 8032
+/// §5.1.2): `y` in the low 255 bits, the parity of `x` in the top bit. The
+/// inverse of `ed_decode_point`.
+fn ed_encode_point(pt : EdPoint) -> Bytes {
+  let be = edmod(pt.y).to_octets(length=32)
+  let buf = Buffer()
+  for i = 31; i >= 1; i = i - 1 {
+    buf.write_byte(be[i])
+  }
+  let parity = if edmod(pt.x) % 2 == (1 : BigInt) { 0x80 } else { 0 }
+  buf.write_byte((be[0].to_int() | parity).to_byte())
+  buf.to_bytes()
+}
+
+///|
+/// A big integer as `length` little-endian bytes (Ed25519's byte order for the
+/// signature scalar `S`).
+fn ed_int_to_le(n : BigInt, length : Int) -> Bytes {
+  let be = n.to_octets(length~)
+  let buf = Buffer()
+  for i = length - 1; i >= 0; i = i - 1 {
+    buf.write_byte(be[i])
+  }
+  buf.to_bytes()
+}
+
+///|
+/// Expand a 32-byte Ed25519 seed into its secret scalar and PRF prefix (RFC 8032
+/// §5.1.5): `SHA-512(seed)`, the low 32 bytes clamped (`&= 0xF8`, top two bits
+/// forced) as the little-endian scalar, the high 32 bytes as the prefix.
+fn ed_expand_seed(seed : Bytes) -> (BigInt, Bytes) {
+  let h = sha512(seed)
+  let abuf = Buffer()
+  abuf.write_byte((h[0].to_int() & 0xF8).to_byte())
+  for i = 1; i < 31; i = i + 1 {
+    abuf.write_byte(h[i])
+  }
+  abuf.write_byte(((h[31].to_int() & 0x7F) | 0x40).to_byte())
+  let s = ed_le_int(abuf.to_bytes()[:])
+  let pbuf = Buffer()
+  for i = 32; i < 64; i = i + 1 {
+    pbuf.write_byte(h[i])
+  }
+  (s, pbuf.to_bytes())
+}
+
+///|
+/// Derive the 32-byte compressed public key `A = [s]B` from a 32-byte Ed25519
+/// seed.
+pub fn ed25519_public_from_seed(seed : Bytes) -> Bytes {
+  let (s, _) = ed_expand_seed(seed)
+  ed_encode_point(ed_mul(s, { x: ed_bx, y: ed_by }))
+}
+
+///|
+/// Ed25519 signing (RFC 8032 §5.1.6), deterministic. `seed` is the 32-byte
+/// secret key. Returns the 64-byte `R || S` signature: `r = SHA-512(prefix || M)
+/// mod l`, `R = [r]B`, `k = SHA-512(R || A || M) mod l`, `S = (r + k·s) mod l`.
+pub fn ed25519_sign(seed : Bytes, msg : Bytes) -> Bytes {
+  let (s, prefix) = ed_expand_seed(seed)
+  let big_a = ed_encode_point(ed_mul(s, { x: ed_bx, y: ed_by }))
+  let rbuf = Buffer()
+  rbuf.write_bytes(prefix)
+  rbuf.write_bytes(msg)
+  let r = edmod_l(ed_le_int(sha512(rbuf.to_bytes())[:]))
+  let big_r = ed_encode_point(ed_mul(r, { x: ed_bx, y: ed_by }))
+  let kbuf = Buffer()
+  kbuf.write_bytes(big_r)
+  kbuf.write_bytes(big_a)
+  kbuf.write_bytes(msg)
+  let k = edmod_l(ed_le_int(sha512(kbuf.to_bytes())[:]))
+  let s_scalar = edmod_l(r + k * s)
+  let out = Buffer()
+  out.write_bytes(big_r)
+  out.write_bytes(ed_int_to_le(s_scalar, 32))
+  out.to_bytes()
+}
+
+///|
 /// An Ed25519 (EdDSA) public key: the 32-byte compressed point. The verification
 /// key for the JWT `EdDSA` algorithm (RFC 8037).
 pub(all) struct Ed25519PublicKey {
@@ -192,6 +271,33 @@ pub fn Ed25519PublicKey::from_hex(hex : String) -> Ed25519PublicKey {
     buf.write_byte(((hi << 4) | lo).to_byte())
   }
   { key: buf.to_bytes() }
+}
+
+///|
+/// An Ed25519 (EdDSA) private key: the 32-byte secret seed. The signing key for
+/// the JWT `EdDSA` algorithm (RFC 8037).
+pub(all) struct Ed25519PrivateKey {
+  seed : Bytes
+}
+
+///|
+/// Build an Ed25519 private key from its 32-byte seed in hex.
+pub fn Ed25519PrivateKey::from_hex(hex : String) -> Ed25519PrivateKey {
+  let buf = Buffer()
+  for i = 0; i < hex.length(); i = i + 2 {
+    let hi = hex_nibble(hex[i].to_int())
+    let lo = hex_nibble(hex[i + 1].to_int())
+    buf.write_byte(((hi << 4) | lo).to_byte())
+  }
+  { seed: buf.to_bytes() }
+}
+
+///|
+/// The public key matching this private key: `A = [s]B`.
+pub fn Ed25519PrivateKey::public_key(
+  self : Ed25519PrivateKey,
+) -> Ed25519PublicKey {
+  { key: ed25519_public_from_seed(self.seed) }
 }
 
 ///|
