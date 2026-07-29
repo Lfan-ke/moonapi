@@ -7,24 +7,37 @@
 // that type; for several, `V` is a user-defined sum type wrapping them — the
 // exhaustive, type-safe stand-in for Python's dynamic `Any` (cf. axum's typemap
 // + downcast, Go's `interface{}` + type assertion). Everything else — the
-// registry, request-scoped one-shot resolution, `yield`-style teardown, and
-// `dependency_overrides` — is modelled faithfully.
+// registry, request-scoped one-shot resolution, sub-dependencies (a factory
+// resolving others through the scope, with cycle detection), `yield`-style
+// teardown, and `dependency_overrides` — is modelled faithfully.
 
 ///|
 /// A provider: a keyed factory that builds a request-scoped dependency value,
 /// with an optional teardown run after the handler (FastAPI's `yield`
 /// dependencies, whose post-`yield` body is cleanup). The `factory` runs at most
-/// once per request scope; the `teardown` receives the produced value.
+/// once per request scope; the `teardown` receives the produced value. The factory
+/// is handed the `Scope` so it can resolve *sub-dependencies* through it — FastAPI's
+/// `Depends(a)` where `a` itself declares `Depends(b)`.
 pub(all) struct Provider[V] {
-  factory : () -> V
+  factory : (Scope[V]) -> V
   teardown : (V) -> Unit
 }
 
 ///|
-/// Build a provider. `teardown` defaults to a no-op — the common "plain value,
-/// nothing to release" case.
+/// Build a leaf provider whose factory needs nothing else. `teardown` defaults to
+/// a no-op — the common "plain value, nothing to release" case.
 pub fn[V] Provider::new(
   factory : () -> V,
+  teardown? : (V) -> Unit = _v => (),
+) -> Provider[V] {
+  { factory: _scope => factory(), teardown }
+}
+
+///|
+/// Build a provider whose factory resolves other dependencies through the request
+/// `Scope` it is handed — the sub-dependency case (FastAPI's nested `Depends`).
+pub fn[V] Provider::scoped(
+  factory : (Scope[V]) -> V,
   teardown? : (V) -> Unit = _v => (),
 ) -> Provider[V] {
   { factory, teardown }
@@ -56,6 +69,20 @@ pub fn[V] Container::provide(
   teardown? : (V) -> Unit = _v => (),
 ) -> Container[V] {
   self.providers[key] = Provider::new(factory, teardown~)
+  self
+}
+
+///|
+/// Register a base provider whose factory resolves sub-dependencies through the
+/// request scope it is handed (FastAPI's nested `Depends`). Otherwise like
+/// `provide`.
+pub fn[V] Container::provide_using(
+  self : Container[V],
+  key : String,
+  factory : (Scope[V]) -> V,
+  teardown? : (V) -> Unit = _v => (),
+) -> Container[V] {
+  self.providers[key] = Provider::scoped(factory, teardown~)
   self
 }
 
@@ -105,13 +132,14 @@ fn[V] Container::resolve(self : Container[V], key : String) -> Provider[V]? {
 pub struct Scope[V] {
   container : Container[V]
   cache : Map[String, V]
+  building : Map[String, Bool]
   teardowns : Array[() -> Unit]
 }
 
 ///|
 /// Open a fresh request scope over this container.
 pub fn[V] Container::open_scope(self : Container[V]) -> Scope[V] {
-  { container: self, cache: Map([]), teardowns: [] }
+  { container: self, cache: Map([]), building: Map([]), teardowns: [] }
 }
 
 ///|
@@ -122,17 +150,25 @@ pub fn[V] Container::open_scope(self : Container[V]) -> Scope[V] {
 pub fn[V] Scope::get(self : Scope[V], key : String) -> V? {
   match self.cache.get(key) {
     Some(v) => Some(v)
-    None =>
+    None => {
+      // A key already mid-build has been re-entered: a circular dependency.
+      // Break it with `None` rather than looping (FastAPI raises here).
+      if self.building.get(key) is Some(_) {
+        return None
+      }
       match self.container.resolve(key) {
         None => None
         Some(prov) => {
-          let v = (prov.factory)()
+          self.building[key] = true
+          let v = (prov.factory)(self)
+          self.building.remove(key)
           self.cache[key] = v
           let td = prov.teardown
           self.teardowns.push(() => td(v))
           Some(v)
         }
       }
+    }
   }
 }
 

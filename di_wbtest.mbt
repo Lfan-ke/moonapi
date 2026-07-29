@@ -98,6 +98,63 @@ test "DI: a dependency is built once per request scope (cached)" {
 }
 
 ///|
+test "DI: a dependency resolves a sub-dependency through the scope, LIFO teardown" {
+  let log : Array[String] = []
+  let c : Container[Dep] = Container::new()
+  c.provide(
+    "prefix",
+    () => {
+      log.push("build prefix")
+      Greeting("Hi")
+    },
+    teardown=_v => log.push("td prefix"),
+  )
+  |> ignore
+  c.provide_using(
+    "full",
+    scope => {
+      log.push("build full")
+      let p = match scope.get("prefix") {
+        Some(Greeting(s)) => s
+        _ => "?"
+      }
+      Greeting(p + ", there")
+    },
+    teardown=_v => log.push("td full"),
+  )
+  |> ignore
+  let scope = c.open_scope()
+  // Resolving "full" pulls in "prefix" through the scope.
+  assert_eq(scope.get("full") == Some(Greeting("Hi, there")), true)
+  // "prefix" was built once during "full"; asking again returns the cache.
+  assert_eq(scope.get("prefix") == Some(Greeting("Hi")), true)
+  scope.close()
+  // prefix built while full resolved (before full); teardown LIFO -> full, then prefix.
+  assert_eq(log == ["build full", "build prefix", "td full", "td prefix"], true)
+}
+
+///|
+test "DI: a circular sub-dependency breaks with None instead of looping" {
+  let c : Container[Dep] = Container::new()
+  c.provide_using("a", scope => {
+    let _ = scope.get("b")
+    Greeting("a")
+  })
+  |> ignore
+  c.provide_using("b", scope => {
+    let _ = scope.get("a")
+    Greeting("b")
+  })
+  |> ignore
+  let scope = c.open_scope()
+  // get(a) -> builds b -> b asks for a (mid-build) -> None breaks the cycle,
+  // so both still resolve without looping.
+  assert_eq(scope.get("a") == Some(Greeting("a")), true)
+  assert_eq(scope.get("b") == Some(Greeting("b")), true)
+  scope.close()
+}
+
+///|
 test "DI: dependency_overrides shadow the base provider, then restore" {
   let c : Container[Dep] = Container::new()
   c.provide("greeting", () => Greeting("Hello")) |> ignore
