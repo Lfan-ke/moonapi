@@ -294,7 +294,10 @@ pub fn validate_schema(
             if f.required {
               errs.push(ValidationError::missing(loc_push(loc, f.name)))
             }
-          Some(v) => validate_schema(f.schema, v, loc_push(loc, f.name), errs)
+          Some(v) => {
+            validate_schema(f.schema, v, loc_push(loc, f.name), errs)
+            check_constraints(v, f.constraints, loc_push(loc, f.name), errs)
+          }
         }
       }
     (SObject(_), _) =>

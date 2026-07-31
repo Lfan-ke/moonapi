@@ -36,18 +36,22 @@ pub(all) struct Field {
   schema : Schema
   required : Bool
   description : String
+  constraints : Array[Constraint]
 } derive(Eq)
 
 ///|
 /// Build a field. `required` defaults to `true` (FastAPI treats a field without
-/// a default as required).
+/// a default as required). `constraints` are the Pydantic-style value constraints
+/// (`ge`/`le`/`min_length`/`pattern`/…) that are both emitted into the field's
+/// OpenAPI schema and enforced when validating an inbound value.
 pub fn Field::new(
   name : String,
   schema : Schema,
   required? : Bool = true,
   description? : String = "",
+  constraints? : Array[Constraint] = [],
 ) -> Field {
-  { name, schema, required, description }
+  { name, schema, required, description, constraints }
 }
 
 ///|
@@ -194,7 +198,11 @@ fn object_body(
   let props : Map[String, Json] = Map([])
   let required : Array[Json] = []
   for f in os.fields {
-    let fs = emit_schema(f.schema, defs, version)
+    let fs = with_constraints(
+      emit_schema(f.schema, defs, version),
+      f.constraints,
+      version,
+    )
     props[f.name] = if f.description != "" {
       with_description(fs, f.description)
     } else {

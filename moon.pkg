@@ -5,6 +5,7 @@ import {
   "Lfan-ke/moonasgi",
   "moonbitlang/core/json",
   "moonbitlang/core/buffer",
+  "moonbitlang/core/string",
   "moonbitlang/core/encoding/utf8",
   "moonbitlang/core/encoding/base64",
 }
