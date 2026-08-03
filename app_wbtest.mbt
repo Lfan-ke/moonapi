@@ -196,3 +196,42 @@ test "openapi multi-version output" {
   }
   assert_eq(n, 2)
 }
+
+///|
+/// The `get`/`post`/… `verb` operation at `path` in an OpenAPI document.
+fn op_of(doc : Json, path : String, verb : String) -> Json? {
+  guard doc is Object(m) else { return None }
+  guard m.get("paths") is Some(Object(p)) else { return None }
+  guard p.get(path) is Some(Object(methods)) else { return None }
+  methods.get(verb)
+}
+
+///|
+test "openapi operation tags" {
+  let app = App::new()
+  app.get("/nav", _ctx => text(200, "ok"), tags=["ai", "navigator"])
+  app.get("/plain", _ctx => text(200, "ok"))
+  let doc = app.openapi(version=OpenApi31)
+  // The tagged operation carries its tags, in registration order.
+  let tags = match op_of(doc, "/nav", "get") {
+    Some(Object(op)) =>
+      match op.get("tags") {
+        Some(Array(xs)) =>
+          xs.map(x => {
+            match x {
+              String(s) => s
+              _ => ""
+            }
+          })
+        _ => []
+      }
+    _ => []
+  }
+  assert_eq(tags, ["ai", "navigator"])
+  // An untagged operation omits the key entirely (FastAPI parity).
+  let has_tags = match op_of(doc, "/plain", "get") {
+    Some(Object(op)) => op.contains("tags")
+    _ => false
+  }
+  assert_eq(has_tags, false)
+}

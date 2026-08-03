@@ -71,6 +71,10 @@ pub fn App::openapi(
     if route.summary != "" {
       op["summary"] = route.summary.to_json()
     }
+    // FastAPI omits `tags` entirely when empty rather than emitting `[]`.
+    if !route.tags.is_empty() {
+      op["tags"] = route.tags.to_json()
+    }
     match route.endpoint {
       // A typed route: walk its descriptor once for parameters, request body,
       // responses, and any hoisted component schemas.

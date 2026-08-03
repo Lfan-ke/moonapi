@@ -75,6 +75,7 @@ struct Route {
   path : String
   run : BackgroundHandler
   summary : String
+  tags : Array[String]
   endpoint : Endpoint?
   security : Array[SecurityRequirement]
 }
@@ -164,6 +165,7 @@ pub fn App::route(
   path : String,
   handler : ApiHandler,
   summary? : String = "",
+  tags? : Array[String] = [],
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
 ) -> Unit {
@@ -172,6 +174,7 @@ pub fn App::route(
     path,
     run: (ctx, _bg) => handler(ctx),
     summary,
+    tags,
     endpoint,
     security,
   })
@@ -187,10 +190,19 @@ pub fn App::route_bg(
   path : String,
   handler : BackgroundHandler,
   summary? : String = "",
+  tags? : Array[String] = [],
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
 ) -> Unit {
-  self.routes.push({ verb, path, run: handler, summary, endpoint, security })
+  self.routes.push({
+    verb,
+    path,
+    run: handler,
+    summary,
+    tags,
+    endpoint,
+    security,
+  })
 }
 
 ///|
@@ -199,10 +211,11 @@ pub fn App::get(
   path : String,
   handler : ApiHandler,
   summary? : String = "",
+  tags? : Array[String] = [],
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
 ) -> Unit {
-  self.route(Get, path, handler, summary~, endpoint~, security~)
+  self.route(Get, path, handler, summary~, tags~, endpoint~, security~)
 }
 
 ///|
@@ -211,10 +224,11 @@ pub fn App::post(
   path : String,
   handler : ApiHandler,
   summary? : String = "",
+  tags? : Array[String] = [],
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
 ) -> Unit {
-  self.route(Post, path, handler, summary~, endpoint~, security~)
+  self.route(Post, path, handler, summary~, tags~, endpoint~, security~)
 }
 
 ///|
@@ -223,10 +237,11 @@ pub fn App::put(
   path : String,
   handler : ApiHandler,
   summary? : String = "",
+  tags? : Array[String] = [],
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
 ) -> Unit {
-  self.route(Put, path, handler, summary~, endpoint~, security~)
+  self.route(Put, path, handler, summary~, tags~, endpoint~, security~)
 }
 
 ///|
@@ -235,10 +250,11 @@ pub fn App::patch(
   path : String,
   handler : ApiHandler,
   summary? : String = "",
+  tags? : Array[String] = [],
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
 ) -> Unit {
-  self.route(Patch, path, handler, summary~, endpoint~, security~)
+  self.route(Patch, path, handler, summary~, tags~, endpoint~, security~)
 }
 
 ///|
@@ -247,10 +263,11 @@ pub fn App::delete(
   path : String,
   handler : ApiHandler,
   summary? : String = "",
+  tags? : Array[String] = [],
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
 ) -> Unit {
-  self.route(Delete, path, handler, summary~, endpoint~, security~)
+  self.route(Delete, path, handler, summary~, tags~, endpoint~, security~)
 }
 
 ///|
