@@ -54,11 +54,41 @@ fn path_parameters(path : String, version : OpenApiVersion) -> Array[Json] {
 ///|
 /// Build the OpenAPI / Swagger document for the app as a `Json` value, walking
 /// the registered routes once into paths → methods → operations.
+/// OpenAPI `contact` info (← FastAPI's `contact`): every field optional, emitted
+/// only when non-empty.
+pub(all) struct Contact {
+  name : String
+  url : String
+  email : String
+}
+
+///|
+/// OpenAPI `license` info (← FastAPI's `license_info`): `name` required, `url`
+/// optional.
+pub(all) struct License {
+  name : String
+  url : String
+}
+
+///|
+/// A `servers` entry (← FastAPI's `servers`): a base URL and an optional
+/// description.
+pub(all) struct Server {
+  url : String
+  description : String
+}
+
+///|
 pub fn App::openapi(
   self : App,
   version? : OpenApiVersion = OpenApi31,
   title? : String = "moonapi",
   api_version? : String = "0.1.0",
+  description? : String = "",
+  terms_of_service? : String = "",
+  contact? : Contact? = None,
+  license? : License? = None,
+  servers? : Array[Server] = [],
 ) -> Json {
   let paths : Map[String, Json] = Map([])
   let defs : Map[String, Json] = Map([])
@@ -110,12 +140,64 @@ pub fn App::openapi(
     ("title", title.to_json()),
     ("version", api_version.to_json()),
   ])
+  if description != "" {
+    info["description"] = description.to_json()
+  }
+  if terms_of_service != "" {
+    info["termsOfService"] = terms_of_service.to_json()
+  }
+  match contact {
+    Some(c) => {
+      let cm : Map[String, Json] = Map([])
+      if c.name != "" {
+        cm["name"] = c.name.to_json()
+      }
+      if c.url != "" {
+        cm["url"] = c.url.to_json()
+      }
+      if c.email != "" {
+        cm["email"] = c.email.to_json()
+      }
+      if !cm.is_empty() {
+        info["contact"] = cm.to_json()
+      }
+    }
+    None => ()
+  }
+  match license {
+    Some(l) => {
+      let lm : Map[String, Json] = Map([("name", l.name.to_json())])
+      if l.url != "" {
+        lm["url"] = l.url.to_json()
+      }
+      info["license"] = lm.to_json()
+    }
+    None => ()
+  }
   let (root_key, version_str) = version_field(version)
   let doc : Map[String, Json] = Map([
     (root_key, version_str.to_json()),
     ("info", info.to_json()),
     ("paths", paths.to_json()),
   ])
+  // `servers` is an OpenAPI 3.x construct (2.0 uses host/basePath), so emit it
+  // only for the 3.x dialects.
+  if !servers.is_empty() {
+    match version {
+      Swagger20 => ()
+      _ => {
+        let sarr : Array[Json] = []
+        for s in servers {
+          let sm : Map[String, Json] = Map([("url", s.url.to_json())])
+          if s.description != "" {
+            sm["description"] = s.description.to_json()
+          }
+          sarr.push(sm.to_json())
+        }
+        doc["servers"] = sarr.to_json()
+      }
+    }
+  }
   // Hoisted named object schemas and the declared security schemes (the app's
   // own plus every mounted sub-app's): under `components` (`schemas` /
   // `securitySchemes`) in 3.x, or the top-level `definitions` /

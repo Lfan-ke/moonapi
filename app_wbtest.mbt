@@ -255,3 +255,39 @@ test "openapi operation deprecated flag" {
   }
   assert_eq(has_dep, false)
 }
+
+///|
+test "openapi richer info: description/contact/license + servers" {
+  let app = App::new()
+  app.get("/ping", _ctx => text(200, "ok"))
+  let doc = app.openapi(
+    version=OpenApi31,
+    title="Greet",
+    description="qwq api",
+    contact=Some({ name: "heke1228", url: "", email: "emm@qq.com" }),
+    license=Some({ name: "Apache-2.0", url: "https://apache.org" }),
+    servers=[{ url: "https://api.example.com", description: "prod" }],
+  )
+  guard doc is Object(m) else { fail("doc should be an object") }
+  guard m.get("info") is Some(Object(info)) else {
+    fail("info should be present")
+  }
+  assert_eq(info.get("description"), Some("qwq api".to_json()))
+  guard info.get("contact") is Some(Object(c)) else {
+    fail("contact should be present")
+  }
+  assert_eq(c.get("name"), Some("heke1228".to_json()))
+  assert_eq(c.get("email"), Some("emm@qq.com".to_json()))
+  // An empty contact field is omitted, not emitted as "".
+  assert_eq(c.get("url"), None)
+  guard info.get("license") is Some(Object(l)) else {
+    fail("license should be present")
+  }
+  assert_eq(l.get("name"), Some("Apache-2.0".to_json()))
+  guard m.get("servers") is Some(Array(sv)) else {
+    fail("servers should be present")
+  }
+  assert_eq(sv.length(), 1)
+  guard sv[0] is Object(s0) else { fail("server should be an object") }
+  assert_eq(s0.get("url"), Some("https://api.example.com".to_json()))
+}
