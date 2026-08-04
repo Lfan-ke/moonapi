@@ -75,6 +75,10 @@ pub fn App::openapi(
     if !route.tags.is_empty() {
       op["tags"] = route.tags.to_json()
     }
+    // FastAPI omits `deprecated` unless the route is actually deprecated.
+    if route.deprecated {
+      op["deprecated"] = true.to_json()
+    }
     match route.endpoint {
       // A typed route: walk its descriptor once for parameters, request body,
       // responses, and any hoisted component schemas.

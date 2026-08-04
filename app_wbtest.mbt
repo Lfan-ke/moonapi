@@ -235,3 +235,23 @@ test "openapi operation tags" {
   }
   assert_eq(has_tags, false)
 }
+
+///|
+test "openapi operation deprecated flag" {
+  let app = App::new()
+  app.get("/old", _ctx => text(200, "ok"), deprecated=true)
+  app.get("/new", _ctx => text(200, "ok"))
+  let doc = app.openapi(version=OpenApi31)
+  // The deprecated operation carries `"deprecated": true`.
+  let dep = match op_of(doc, "/old", "get") {
+    Some(Object(op)) => op.get("deprecated")
+    _ => None
+  }
+  assert_eq(dep, Some(true.to_json()))
+  // A live operation omits the key entirely (FastAPI parity — false is not emitted).
+  let has_dep = match op_of(doc, "/new", "get") {
+    Some(Object(op)) => op.contains("deprecated")
+    _ => false
+  }
+  assert_eq(has_dep, false)
+}

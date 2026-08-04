@@ -287,6 +287,16 @@ pub fn validate_schema(
           loc, "list_type", "Input should be a valid list",
         ),
       )
+    (SEnum(_, values), v) =>
+      if !enum_member(values, v) {
+        errs.push(
+          ValidationError::type_error(
+            loc,
+            "enum",
+            "Input should be " + enum_expected(values),
+          ),
+        )
+      }
     (SObject(os), Object(m)) =>
       for f in os.fields {
         match m.get(f.name) {
@@ -344,8 +354,77 @@ fn validate_scalar_str(
           ),
         )
       }
+    SEnum(base, values) =>
+      if !enum_member(values, scalar_json(base, v)) {
+        errs.push(
+          ValidationError::type_error(
+            loc,
+            "enum",
+            "Input should be " + enum_expected(values),
+          ),
+        )
+      }
     _ => ()
   }
+}
+
+///|
+/// Coerce a raw string parameter to the `Json` shape its declared scalar `base`
+/// carries, so an enum-member comparison sees like-typed values (a `1` path
+/// segment against an integer-valued member). Unparseable input stays a string
+/// and simply fails membership, as any non-member does.
+fn scalar_json(base : Schema, v : String) -> Json {
+  match base {
+    SInt =>
+      match parse_int(v) {
+        Some(n) => n.to_json()
+        None => v.to_json()
+      }
+    SBool =>
+      match v {
+        "true" | "True" | "1" => true.to_json()
+        "false" | "False" | "0" => false.to_json()
+        _ => v.to_json()
+      }
+    _ => v.to_json()
+  }
+}
+
+///|
+/// Whether `v` is one of the allowed enum `values`.
+fn enum_member(values : Array[Json], v : Json) -> Bool {
+  for allowed in values {
+    if allowed == v {
+      return true
+    }
+  }
+  false
+}
+
+///|
+/// The Pydantic-style "expected one of" fragment for an `enum` error: string
+/// members quoted, comma-separated, with a final `or` before the last.
+fn enum_expected(values : Array[Json]) -> String {
+  let parts : Array[String] = []
+  for v in values {
+    parts.push(
+      match v {
+        String(s) => "'" + s + "'"
+        _ => v.stringify()
+      },
+    )
+  }
+  let n = parts.length()
+  let sb = StringBuilder::new()
+  for i = 0; i < n; i = i + 1 {
+    if i == n - 1 && n > 1 {
+      sb.write_string(" or ")
+    } else if i > 0 {
+      sb.write_string(", ")
+    }
+    sb.write_string(parts[i])
+  }
+  sb.to_string()
 }
 
 ///|

@@ -16,6 +16,9 @@ pub(all) enum Schema {
   SNull
   SArray(Schema)
   SObject(ObjectSchema)
+  // A closed value set (← a Python `Enum` / `typing.Literal`): the base scalar
+  // whose `type` is still emitted, plus the allowed values as raw `Json`.
+  SEnum(Schema, Array[Json])
 } derive(Eq)
 
 ///|
@@ -165,6 +168,18 @@ fn emit_schema(
         r.to_json()
       } else {
         object_body(os, defs, version)
+      }
+    SEnum(base, values) =>
+      match emit_schema(base, defs, version) {
+        Object(o) => {
+          let m : Map[String, Json] = Map([])
+          for k, v in o {
+            m[k] = v
+          }
+          m["enum"] = values.to_json()
+          m.to_json()
+        }
+        other => other
       }
   }
 }

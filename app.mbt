@@ -76,6 +76,7 @@ struct Route {
   run : BackgroundHandler
   summary : String
   tags : Array[String]
+  deprecated : Bool
   endpoint : Endpoint?
   security : Array[SecurityRequirement]
 }
@@ -166,6 +167,7 @@ pub fn App::route(
   handler : ApiHandler,
   summary? : String = "",
   tags? : Array[String] = [],
+  deprecated? : Bool = false,
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
 ) -> Unit {
@@ -175,6 +177,7 @@ pub fn App::route(
     run: (ctx, _bg) => handler(ctx),
     summary,
     tags,
+    deprecated,
     endpoint,
     security,
   })
@@ -191,6 +194,7 @@ pub fn App::route_bg(
   handler : BackgroundHandler,
   summary? : String = "",
   tags? : Array[String] = [],
+  deprecated? : Bool = false,
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
 ) -> Unit {
@@ -200,6 +204,7 @@ pub fn App::route_bg(
     run: handler,
     summary,
     tags,
+    deprecated,
     endpoint,
     security,
   })
@@ -212,10 +217,20 @@ pub fn App::get(
   handler : ApiHandler,
   summary? : String = "",
   tags? : Array[String] = [],
+  deprecated? : Bool = false,
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
 ) -> Unit {
-  self.route(Get, path, handler, summary~, tags~, endpoint~, security~)
+  self.route(
+    Get,
+    path,
+    handler,
+    summary~,
+    tags~,
+    deprecated~,
+    endpoint~,
+    security~,
+  )
 }
 
 ///|
@@ -225,10 +240,20 @@ pub fn App::post(
   handler : ApiHandler,
   summary? : String = "",
   tags? : Array[String] = [],
+  deprecated? : Bool = false,
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
 ) -> Unit {
-  self.route(Post, path, handler, summary~, tags~, endpoint~, security~)
+  self.route(
+    Post,
+    path,
+    handler,
+    summary~,
+    tags~,
+    deprecated~,
+    endpoint~,
+    security~,
+  )
 }
 
 ///|
@@ -238,10 +263,20 @@ pub fn App::put(
   handler : ApiHandler,
   summary? : String = "",
   tags? : Array[String] = [],
+  deprecated? : Bool = false,
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
 ) -> Unit {
-  self.route(Put, path, handler, summary~, tags~, endpoint~, security~)
+  self.route(
+    Put,
+    path,
+    handler,
+    summary~,
+    tags~,
+    deprecated~,
+    endpoint~,
+    security~,
+  )
 }
 
 ///|
@@ -251,10 +286,20 @@ pub fn App::patch(
   handler : ApiHandler,
   summary? : String = "",
   tags? : Array[String] = [],
+  deprecated? : Bool = false,
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
 ) -> Unit {
-  self.route(Patch, path, handler, summary~, tags~, endpoint~, security~)
+  self.route(
+    Patch,
+    path,
+    handler,
+    summary~,
+    tags~,
+    deprecated~,
+    endpoint~,
+    security~,
+  )
 }
 
 ///|
@@ -264,10 +309,20 @@ pub fn App::delete(
   handler : ApiHandler,
   summary? : String = "",
   tags? : Array[String] = [],
+  deprecated? : Bool = false,
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
 ) -> Unit {
-  self.route(Delete, path, handler, summary~, tags~, endpoint~, security~)
+  self.route(
+    Delete,
+    path,
+    handler,
+    summary~,
+    tags~,
+    deprecated~,
+    endpoint~,
+    security~,
+  )
 }
 
 ///|

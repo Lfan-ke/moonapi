@@ -246,6 +246,65 @@ test "schema descriptor validates a nested tree directly" {
 }
 
 ///|
+/// A typed route whose body carries an enum field (← a Python `Enum` /
+/// `typing.Literal`): its OpenAPI schema advertises the closed value set and its
+/// validation enforces membership.
+fn enum_app() -> App {
+  let body = Schema::object("Order", [
+    Field::new("status", SEnum(SStr, ["qwq".to_json(), "hhh".to_json()])),
+  ])
+  let ep = Endpoint::new(request_body=Some(body), responses=[
+    ResponseSpec::new(200, body=Some(body)),
+  ])
+  let app = App::new()
+  app.post(
+    "/orders",
+    ctx => {
+      let errs = ep.validate(ctx)
+      if errs.length() > 0 {
+        unprocessable(errs)
+      } else {
+        json(200, ctx.body_json().unwrap_or(Json::null()))
+      }
+    },
+    endpoint=Some(ep),
+  )
+  app
+}
+
+///|
+test "openapi 3.1: enum schema keeps its base type and carries the value set" {
+  let doc = enum_app().openapi(version=OpenApi31)
+  let status = dig(doc, [
+    "components", "schemas", "Order", "properties", "status",
+  ]).unwrap()
+  // FastAPI emits {"type":"string","enum":[...]} — the base type stays alongside.
+  assert_eq(json_str(status, "type"), "string")
+  assert_eq(
+    dig(status, ["enum"]).unwrap(),
+    ["qwq".to_json(), "hhh".to_json()].to_json(),
+  )
+}
+
+///|
+test "descriptor-driven validation: enum admits a member, rejects a non-member" {
+  let app = enum_app()
+  // A member value passes and echoes the body back.
+  let ok = app.handle(
+    mkreq_full("POST", "/orders", body=@utf8.encode("{\"status\":\"qwq\"}")),
+  )
+  assert_eq(ok.status, 200)
+  // A non-member value is a located 422 with the `enum` Pydantic error kind.
+  let bad = app.handle(
+    mkreq_full("POST", "/orders", body=@utf8.encode("{\"status\":\"emm\"}")),
+  )
+  assert_eq(bad.status, 422)
+  let e = detail0(bad)
+  assert_eq(json_str(e, "type"), "enum")
+  assert_eq(err_loc(e), ["body", "status"])
+}
+
+///|
 test "ToSchema trait bridges to the associated schema function" {
   let u : User = {
     id: 1,
