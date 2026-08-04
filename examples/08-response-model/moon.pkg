@@ -1,0 +1,7 @@
+import {
+  "Lfan-ke/moonapi",
+  "Lfan-ke/moonasgi",
+  "moonbitlang/core/encoding/utf8",
+}
+
+pkgtype(kind: "executable")
