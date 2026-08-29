@@ -37,6 +37,9 @@ over a real transport.
 | 20 | [`jwt-signing`](20-jwt-signing/) | Sign and verify a JWT under HS256, RS256, ES256, and EdDSA; tamper and alg-downgrade refusals | `jwt_sign/jwt_verify`, `jwt_sign_rs256/es256/eddsa`, `RsaPrivateKey`/`EcdsaPrivateKey`/`Ed25519PrivateKey`, `JwtError` |
 | 21 | [`signatures`](21-signatures/) | The raw RSA / ECDSA / Ed25519 sign+verify primitives under JWT, round-tripped and pinned to the RFC 7515 A.3 vector | `rsa_pkcs1_sha256_sign/verify`, `ecdsa_p256_sha256_sign/verify`, `ed25519_sign/verify`, `*PublicKey::from_hex` |
 
+| 22 | [`docs-ui`](22-docs-ui/) | The three documentation pages FastAPI serves — the spec, Swagger UI, ReDoc — and how to leave one off | `App::enable_docs`, `swagger_ui`, `redoc_ui`, `html` |
+| 23 | [`lifespan`](23-lifespan/) | Startup and shutdown hooks, run through the moonasgi lifespan core so the order is visible without a server | `App::on_startup`, `App::on_shutdown`, `App::lifespan_handler` |
+
 The document `openapi_json(version=OpenApi31)` prints is the same one a server
 ([`mooncat`](https://github.com/Lfan-ke/mooncat)) serves at `/openapi.json`
 after `App::to_asgi`; swap `OpenApi31` for `OpenApi30` or `Swagger20` to emit the

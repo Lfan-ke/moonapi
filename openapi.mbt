@@ -97,6 +97,9 @@ pub fn App::openapi(
   self.collect_routes("", all_routes)
   for entry in all_routes {
     let (full_path, route) = entry
+    if !route.include_in_schema {
+      continue
+    }
     let op : Map[String, Json] = Map([])
     if route.summary != "" {
       op["summary"] = route.summary.to_json()
@@ -295,6 +298,17 @@ pub fn App::openapi_json(
   version? : OpenApiVersion = OpenApi31,
 ) -> String {
   self.openapi(version~).stringify(indent=2)
+}
+
+///|
+/// A self-contained ReDoc page rendering the document served at `spec_url` — the
+/// second reading of the same spec FastAPI serves at `/redoc`, three-panel and
+/// built for reading rather than for trying calls out.
+pub fn redoc_ui(
+  spec_url? : String = "/openapi.json",
+  title? : String = "moonapi",
+) -> String {
+  "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>\{title}</title>\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<style>body { margin: 0; }</style>\n</head>\n<body>\n<redoc spec-url=\"\{spec_url}\"></redoc>\n<script src=\"https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js\"></script>\n</body>\n</html>\n"
 }
 
 ///|

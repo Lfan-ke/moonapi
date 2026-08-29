@@ -361,3 +361,47 @@ test "a raising shutdown hook still lets the rest run" {
   assert_eq(failed.contains("flush failed"), true)
   assert_eq(log, ["still-runs", "last-registered-runs-first"])
 }
+
+///|
+/// `enable_docs` serves the three pages FastAPI serves — the spec, Swagger UI and
+/// ReDoc — and keeps all three out of the spec they describe, so turning docs on
+/// does not change what a client reads.
+test "enable_docs serves the spec, Swagger UI and ReDoc without joining the spec" {
+  let app = App::new()
+  app.get("/hello", _ctx => text(200, "hhh"), summary="greet")
+  app.enable_docs(title="qwq api")
+  let spec = app.handle(mkreq("GET", "/openapi.json"))
+  assert_eq(spec.status, 200)
+  assert_eq(spec.header("content-type"), Some("application/json"))
+  let docs = app.handle(mkreq("GET", "/docs"))
+  assert_eq(docs.status, 200)
+  assert_eq(docs.header("content-type"), Some("text/html; charset=utf-8"))
+  let docs_body = @utf8.decode_lossy(docs.body)
+  assert_eq(docs_body.contains("swagger-ui"), true)
+  assert_eq(docs_body.contains("/openapi.json"), true)
+  assert_eq(docs_body.contains("qwq api"), true)
+  let redoc = app.handle(mkreq("GET", "/redoc"))
+  assert_eq(redoc.status, 200)
+  let redoc_body = @utf8.decode_lossy(redoc.body)
+  assert_eq(redoc_body.contains("<redoc spec-url=\"/openapi.json\">"), true)
+  // The documented surface is still just the one route.
+  let paths = match app.openapi() {
+    Object(m) =>
+      match m.get("paths") {
+        Some(Object(p)) => p.keys().collect()
+        _ => []
+      }
+    _ => []
+  }
+  assert_eq(paths, ["/hello"])
+}
+
+///|
+/// Each documentation page can be turned off on its own.
+test "enable_docs leaves off whatever is passed None" {
+  let app = App::new()
+  app.enable_docs(docs_url=None, redoc_url=None)
+  assert_eq(app.handle(mkreq("GET", "/openapi.json")).status, 200)
+  assert_eq(app.handle(mkreq("GET", "/docs")).status, 404)
+  assert_eq(app.handle(mkreq("GET", "/redoc")).status, 404)
+}

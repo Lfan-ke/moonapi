@@ -42,6 +42,8 @@ pub fn gzip(min_size? : Int) -> ((@moonasgi.Request) -> @moonasgi.Response) -> (
 
 pub fn hmac_sha256(Bytes, Bytes) -> Bytes
 
+pub fn html(Int, String) -> @moonasgi.Response
+
 pub fn http_error(Int, String, headers? : Array[(String, String)]) -> HttpException
 
 pub fn inflate(Bytes) -> Bytes
@@ -69,6 +71,8 @@ pub fn jwt_verify_rs256(String, RsaPublicKey, Int64) -> Map[String, Json] raise 
 pub fn oauth2_app(() -> Int64, secret? : String) -> App
 
 pub fn parse_basic_auth(String) -> HttpBasicCredentials?
+
+pub fn redoc_ui(spec_url? : String, title? : String) -> String
 
 pub fn rsa_pkcs1_sha256_sign(Bytes, RsaPrivateKey) -> Bytes
 
@@ -132,9 +136,10 @@ pub struct App {
 }
 pub fn App::add_security_scheme(Self, String, SecurityScheme) -> Unit
 pub fn App::add_status_handler(Self, Int, (Context) -> @moonasgi.Response) -> Unit
-pub fn App::delete(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, tags? : Array[String], deprecated? : Bool, endpoint? : Endpoint?, security? : Array[SecurityRequirement]) -> Unit
+pub fn App::delete(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, tags? : Array[String], deprecated? : Bool, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool) -> Unit
+pub fn App::enable_docs(Self, openapi_url? : String?, docs_url? : String?, redoc_url? : String?, version? : OpenApiVersion, title? : String) -> Unit
 pub fn App::exception_handler(Self, (Context, Error) -> @moonasgi.Response?) -> Unit
-pub fn App::get(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, tags? : Array[String], deprecated? : Bool, endpoint? : Endpoint?, security? : Array[SecurityRequirement]) -> Unit
+pub fn App::get(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, tags? : Array[String], deprecated? : Bool, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool) -> Unit
 pub fn App::handle(Self, @moonasgi.Request) -> @moonasgi.Response
 pub fn App::handle_with_background(Self, @moonasgi.Request) -> (@moonasgi.Response, BackgroundTasks)
 pub fn App::lifespan_handler(Self) -> @moonasgi.LifespanHandler
@@ -145,11 +150,11 @@ pub fn App::on_shutdown(Self, () -> Unit raise) -> Unit
 pub fn App::on_startup(Self, () -> Unit raise) -> Unit
 pub fn App::openapi(Self, version? : OpenApiVersion, title? : String, api_version? : String, description? : String, terms_of_service? : String, contact? : Contact?, license? : License?, servers? : Array[Server]) -> Json
 pub fn App::openapi_json(Self, version? : OpenApiVersion) -> String
-pub fn App::patch(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, tags? : Array[String], deprecated? : Bool, endpoint? : Endpoint?, security? : Array[SecurityRequirement]) -> Unit
-pub fn App::post(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, tags? : Array[String], deprecated? : Bool, endpoint? : Endpoint?, security? : Array[SecurityRequirement]) -> Unit
-pub fn App::put(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, tags? : Array[String], deprecated? : Bool, endpoint? : Endpoint?, security? : Array[SecurityRequirement]) -> Unit
-pub fn App::route(Self, Method, String, (Context) -> @moonasgi.Response raise, summary? : String, tags? : Array[String], deprecated? : Bool, endpoint? : Endpoint?, security? : Array[SecurityRequirement]) -> Unit
-pub fn App::route_bg(Self, Method, String, (Context, BackgroundTasks) -> @moonasgi.Response raise, summary? : String, tags? : Array[String], deprecated? : Bool, endpoint? : Endpoint?, security? : Array[SecurityRequirement]) -> Unit
+pub fn App::patch(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, tags? : Array[String], deprecated? : Bool, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool) -> Unit
+pub fn App::post(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, tags? : Array[String], deprecated? : Bool, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool) -> Unit
+pub fn App::put(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, tags? : Array[String], deprecated? : Bool, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool) -> Unit
+pub fn App::route(Self, Method, String, (Context) -> @moonasgi.Response raise, summary? : String, tags? : Array[String], deprecated? : Bool, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool) -> Unit
+pub fn App::route_bg(Self, Method, String, (Context, BackgroundTasks) -> @moonasgi.Response raise, summary? : String, tags? : Array[String], deprecated? : Bool, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool) -> Unit
 pub fn App::secure_oauth2(Self, String, OAuth2PasswordBearer, scopes? : Array[(String, String)]) -> Unit
 pub fn App::set_clock(Self, () -> Int64) -> Unit
 pub fn App::to_asgi(Self) -> async (@moonasgi.Scope, async () -> @moonasgi.Event, async (@moonasgi.Event) -> Unit) -> Unit

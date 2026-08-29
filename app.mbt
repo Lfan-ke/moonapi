@@ -79,6 +79,9 @@ struct Route {
   deprecated : Bool
   endpoint : Endpoint?
   security : Array[SecurityRequirement]
+  // FastAPI's `include_in_schema`: a route that serves the documentation itself has
+  // no business appearing in the document it serves.
+  include_in_schema : Bool
 }
 
 ///|
@@ -193,6 +196,7 @@ pub fn App::route(
   deprecated? : Bool = false,
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
+  include_in_schema? : Bool = true,
 ) -> Unit {
   self.routes.push({
     verb,
@@ -203,6 +207,7 @@ pub fn App::route(
     deprecated,
     endpoint,
     security,
+    include_in_schema,
   })
 }
 
@@ -220,6 +225,7 @@ pub fn App::route_bg(
   deprecated? : Bool = false,
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
+  include_in_schema? : Bool = true,
 ) -> Unit {
   self.routes.push({
     verb,
@@ -230,6 +236,7 @@ pub fn App::route_bg(
     deprecated,
     endpoint,
     security,
+    include_in_schema,
   })
 }
 
@@ -243,6 +250,7 @@ pub fn App::get(
   deprecated? : Bool = false,
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
+  include_in_schema? : Bool = true,
 ) -> Unit {
   self.route(
     Get,
@@ -253,7 +261,52 @@ pub fn App::get(
     deprecated~,
     endpoint~,
     security~,
+    include_in_schema~,
   )
+}
+
+///|
+/// Serve the app's own documentation, the way FastAPI does out of the box: the
+/// OpenAPI document at `openapi_url`, Swagger UI at `docs_url`, and ReDoc at
+/// `redoc_url`. Pass `None` for any of the three to leave it off. The three routes
+/// are kept out of the document they serve, so enabling docs does not change the
+/// spec a client reads.
+///
+/// It is a call rather than a default because registering routes behind the app's
+/// back would surprise anyone mounting this app under a prefix.
+pub fn App::enable_docs(
+  self : App,
+  openapi_url? : String? = Some("/openapi.json"),
+  docs_url? : String? = Some("/docs"),
+  redoc_url? : String? = Some("/redoc"),
+  version? : OpenApiVersion = OpenApi31,
+  title? : String = "moonapi",
+) -> Unit {
+  if openapi_url is Some(url) {
+    self.get(
+      url,
+      _ctx => json(200, self.openapi(version~)),
+      include_in_schema=false,
+    )
+  }
+  let spec_url = match openapi_url {
+    Some(url) => url
+    None => "/openapi.json"
+  }
+  if docs_url is Some(url) {
+    self.get(
+      url,
+      _ctx => html(200, swagger_ui(spec_url~, title~)),
+      include_in_schema=false,
+    )
+  }
+  if redoc_url is Some(url) {
+    self.get(
+      url,
+      _ctx => html(200, redoc_ui(spec_url~, title~)),
+      include_in_schema=false,
+    )
+  }
 }
 
 ///|
@@ -266,6 +319,7 @@ pub fn App::post(
   deprecated? : Bool = false,
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
+  include_in_schema? : Bool = true,
 ) -> Unit {
   self.route(
     Post,
@@ -276,6 +330,7 @@ pub fn App::post(
     deprecated~,
     endpoint~,
     security~,
+    include_in_schema~,
   )
 }
 
@@ -289,6 +344,7 @@ pub fn App::put(
   deprecated? : Bool = false,
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
+  include_in_schema? : Bool = true,
 ) -> Unit {
   self.route(
     Put,
@@ -299,6 +355,7 @@ pub fn App::put(
     deprecated~,
     endpoint~,
     security~,
+    include_in_schema~,
   )
 }
 
@@ -312,6 +369,7 @@ pub fn App::patch(
   deprecated? : Bool = false,
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
+  include_in_schema? : Bool = true,
 ) -> Unit {
   self.route(
     Patch,
@@ -322,6 +380,7 @@ pub fn App::patch(
     deprecated~,
     endpoint~,
     security~,
+    include_in_schema~,
   )
 }
 
@@ -335,6 +394,7 @@ pub fn App::delete(
   deprecated? : Bool = false,
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
+  include_in_schema? : Bool = true,
 ) -> Unit {
   self.route(
     Delete,
@@ -345,6 +405,7 @@ pub fn App::delete(
     deprecated~,
     endpoint~,
     security~,
+    include_in_schema~,
   )
 }
 
@@ -434,6 +495,16 @@ pub fn text(status : Int, body : String) -> @moonasgi.Response {
   @moonasgi.Response::new(
     status,
     [("content-type", "text/plain; charset=utf-8")],
+    @utf8.encode(body),
+  )
+}
+
+///|
+/// An HTML response — what the documentation pages are served as.
+pub fn html(status : Int, body : String) -> @moonasgi.Response {
+  @moonasgi.Response::new(
+    status,
+    [("content-type", "text/html; charset=utf-8")],
     @utf8.encode(body),
   )
 }

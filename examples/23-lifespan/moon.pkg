@@ -1,0 +1,6 @@
+import {
+  "Lfan-ke/moonapi",
+  "Lfan-ke/moonasgi",
+}
+
+pkgtype(kind: "executable")
