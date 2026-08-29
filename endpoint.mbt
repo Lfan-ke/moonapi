@@ -42,7 +42,7 @@ pub fn Param::new(
   required? : Bool = true,
   description? : String = "",
 ) -> Param {
-  { name, loc, schema, required, description }
+  { name, loc, schema, required, description, }
 }
 
 ///|
@@ -62,7 +62,7 @@ pub fn ResponseSpec::new(
   description? : String = "OK",
   body? : Schema? = None,
 ) -> ResponseSpec {
-  { status, description, body }
+  { status, description, body, }
 }
 
 ///|
@@ -87,7 +87,7 @@ pub fn Endpoint::new(
   request_required? : Bool = true,
   responses? : Array[ResponseSpec] = [],
 ) -> Endpoint {
-  { params, request_body, request_required, responses }
+  { params, request_body, request_required, responses, }
 }
 
 // -- OpenAPI emission for an endpoint -----------------------------------------

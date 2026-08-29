@@ -20,7 +20,7 @@ fn main {
     @moonapi.ServerSentEvent::keep_alive(comment="ping"),
   ]
   println("--- individual frames (blank line dispatches each event) ---")
-  let frames = StringBuilder::new()
+  let frames = StringBuilder()
   for ev in events {
     frames.write_string(ev.encode())
   }

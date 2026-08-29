@@ -25,7 +25,7 @@ pub fn SecurityRequirement::new(
   scheme : String,
   scopes? : Array[String] = [],
 ) -> SecurityRequirement {
-  { scheme, scopes }
+  { scheme, scopes, }
 }
 
 ///|

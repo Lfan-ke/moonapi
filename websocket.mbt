@@ -154,7 +154,7 @@ pub fn WebSocket::sent(self : WebSocket) -> Array[@moonasgi.Event] {
 /// Register a WebSocket route (← FastAPI's `@app.websocket(path)`). The path
 /// matches with the same `:name` segment rules as HTTP routes.
 pub fn App::websocket(self : App, path : String, handler : WsHandler) -> Unit {
-  self.ws_routes.push({ path, handler })
+  self.ws_routes.push({ path, handler, })
 }
 
 ///|

@@ -16,7 +16,7 @@ pub struct BackgroundTasks {
 ///|
 /// An empty task queue.
 pub fn BackgroundTasks::new() -> BackgroundTasks {
-  { tasks: [] }
+  { tasks: [], }
 }
 
 ///|

@@ -30,7 +30,7 @@ pub fn[V] Provider::new(
   factory : () -> V,
   teardown? : (V) -> Unit = _v => (),
 ) -> Provider[V] {
-  { factory: _scope => factory(), teardown }
+  { factory: _scope => factory(), teardown, }
 }
 
 ///|
@@ -40,7 +40,7 @@ pub fn[V] Provider::scoped(
   factory : (Scope[V]) -> V,
   teardown? : (V) -> Unit = _v => (),
 ) -> Provider[V] {
-  { factory, teardown }
+  { factory, teardown, }
 }
 
 ///|
@@ -56,7 +56,7 @@ pub(all) struct Container[V] {
 ///|
 /// An empty container.
 pub fn[V] Container::new() -> Container[V] {
-  { providers: Map([]), overrides: Map([]) }
+  { providers: Map([]), overrides: Map([]), }
 }
 
 ///|
@@ -139,7 +139,7 @@ pub struct Scope[V] {
 ///|
 /// Open a fresh request scope over this container.
 pub fn[V] Container::open_scope(self : Container[V]) -> Scope[V] {
-  { container: self, cache: Map([]), building: Map([]), teardowns: [] }
+  { container: self, cache: Map([]), building: Map([]), teardowns: [], }
 }
 
 ///|

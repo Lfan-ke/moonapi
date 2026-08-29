@@ -54,14 +54,14 @@ pub fn Field::new(
   description? : String = "",
   constraints? : Array[Constraint] = [],
 ) -> Field {
-  { name, schema, required, description, constraints }
+  { name, schema, required, description, constraints, }
 }
 
 ///|
 /// A named object schema: hoisted to `components/schemas` under `name` and
 /// referenced by `$ref` wherever it is used.
 pub fn Schema::object(name : String, fields : Array[Field]) -> Schema {
-  SObject({ name, fields, description: "" })
+  SObject({ name, fields, description: "", })
 }
 
 ///|

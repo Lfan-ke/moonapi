@@ -159,7 +159,7 @@ pub(all) struct ValidationError {
 /// The canonical "a required parameter was not supplied" error located at
 /// `loc`, matching FastAPI's `{"type": "missing", "msg": "Field required"}`.
 pub fn ValidationError::missing(loc : Array[String]) -> ValidationError {
-  { loc, msg: "Field required", kind: "missing" }
+  { loc, msg: "Field required", kind: "missing", }
 }
 
 ///|
@@ -171,7 +171,7 @@ pub fn ValidationError::type_error(
   kind : String,
   msg : String,
 ) -> ValidationError {
-  { loc, msg, kind }
+  { loc, msg, kind, }
 }
 
 ///|
@@ -415,7 +415,7 @@ fn enum_expected(values : Array[Json]) -> String {
     )
   }
   let n = parts.length()
-  let sb = StringBuilder::new()
+  let sb = StringBuilder()
   for i = 0; i < n; i = i + 1 {
     if i == n - 1 && n > 1 {
       sb.write_string(" or ")

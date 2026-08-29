@@ -183,7 +183,7 @@ fn parse_urlencoded(body : Bytes) -> Array[FormField] {
         } else {
           (decode_component(body, start, eq), decode_component(body, eq + 1, i))
         }
-        out.push({ name, value })
+        out.push({ name, value, })
       }
       start = i + 1
     }
@@ -208,14 +208,14 @@ fn header_param(header : String, key : String) -> String? {
   if i < n && header[i].to_int() == 0x22 {
     // quoted
     i = i + 1
-    let sb = StringBuilder::new()
+    let sb = StringBuilder()
     while i < n && header[i].to_int() != 0x22 {
       sb.write_char(header[i].unsafe_to_char())
       i = i + 1
     }
     Some(sb.to_string())
   } else {
-    let sb = StringBuilder::new()
+    let sb = StringBuilder()
     while i < n && header[i].to_int() != 0x3B {
       sb.write_char(header[i].unsafe_to_char())
       i = i + 1
@@ -316,7 +316,7 @@ fn part_header(headers : String, name : String) -> String? {
   }
   let mut i = idx + key.length()
   let n = headers.length()
-  let sb = StringBuilder::new()
+  let sb = StringBuilder()
   while i < n && headers[i].to_int() != 0x0D && headers[i].to_int() != 0x0A {
     sb.write_char(headers[i].unsafe_to_char())
     i = i + 1
@@ -342,12 +342,12 @@ fn parse_multipart(body : Bytes, boundary : String) -> FormData {
         let content_type = part_header(part.headers, "content-type").unwrap_or(
           "",
         )
-        files.push({ name, filename, content_type, content })
+        files.push({ name, filename, content_type, content, })
       }
-      None => fields.push({ name, value: @utf8.decode_lossy(content[:]) })
+      None => fields.push({ name, value: @utf8.decode_lossy(content[:]), })
     }
   }
-  { fields, files }
+  { fields, files, }
 }
 
 ///|
@@ -371,11 +371,11 @@ pub fn Context::form(self : Context) -> FormData {
   if str_index_of(ct_lower, "multipart/form-data", 0) >= 0 {
     match boundary_of(ct) {
       Some(b) => parse_multipart(self.request.body, b)
-      None => { fields: [], files: [] }
+      None => { fields: [], files: [], }
     }
   } else if str_index_of(ct_lower, "application/x-www-form-urlencoded", 0) >= 0 {
-    { fields: parse_urlencoded(self.request.body), files: [] }
+    { fields: parse_urlencoded(self.request.body), files: [], }
   } else {
-    { fields: [], files: [] }
+    { fields: [], files: [], }
   }
 }

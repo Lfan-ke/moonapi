@@ -103,7 +103,7 @@ fn main {
 /// Join strings with commas — collections render through `Debug`, not string
 /// interpolation, so an example spells the formatting out.
 fn join_csv(xs : Array[String]) -> String {
-  let sb = StringBuilder::new()
+  let sb = StringBuilder()
   for i = 0; i < xs.length(); i = i + 1 {
     if i > 0 {
       sb.write_string(",")

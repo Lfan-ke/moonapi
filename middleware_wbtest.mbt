@@ -5,7 +5,7 @@ fn req_h(
   path : String,
   headers : Array[(String, String)],
 ) -> @moonasgi.Request {
-  { http_method: verb, path, query_string: b"", headers, body: b"" }
+  { http_method: verb, path, query_string: b"", headers, body: b"", }
 }
 
 ///|
@@ -136,7 +136,7 @@ fn deflate_payload(gz : Bytes) -> Bytes {
 ///|
 /// `unit` repeated `n` times as bytes — a compressible fixture with real matches.
 fn repeat_bytes(unit : String, n : Int) -> Bytes {
-  let sb = StringBuilder::new()
+  let sb = StringBuilder()
   for _i = 0; _i < n; _i = _i + 1 {
     sb.write_string(unit)
   }
@@ -274,7 +274,7 @@ fn xbytes(n : Int) -> Bytes {
 ///|
 /// Decode a UTF-8 response body to a String for JSON assertions.
 fn decode_body(b : Bytes) -> String {
-  let sb = StringBuilder::new()
+  let sb = StringBuilder()
   for i = 0; i < b.length(); i = i + 1 {
     sb.write_char(b[i].to_int().unsafe_to_char())
   }

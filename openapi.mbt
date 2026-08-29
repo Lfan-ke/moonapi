@@ -280,7 +280,7 @@ fn join_prefix(prefix : String, path : String) -> String {
   if segs.is_empty() {
     return "/"
   }
-  let sb = StringBuilder::new()
+  let sb = StringBuilder()
   for s in segs {
     sb.write_string("/")
     sb.write_string(s)

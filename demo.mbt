@@ -104,7 +104,7 @@ pub fn demo_app() -> App {
         let user : User = {
           id: 1,
           name,
-          address: { city: "Nowhere", zip: "00000" },
+          address: { city: "Nowhere", zip: "00000", },
           tags: [],
         }
         json(201, user.to_json())
@@ -128,7 +128,7 @@ pub fn demo_app() -> App {
         let user : User = {
           id: parse_int(id).unwrap_or(0),
           name: "demo",
-          address: { city: "Springfield", zip: "12345" },
+          address: { city: "Springfield", zip: "12345", },
           tags: ["a", "b"],
         }
         json(200, user.to_json())

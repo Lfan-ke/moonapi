@@ -65,7 +65,7 @@ fn main {
 ///|
 /// Join strings with commas — a repeated form field surfaces as a list.
 fn join_csv(xs : Array[String]) -> String {
-  let sb = StringBuilder::new()
+  let sb = StringBuilder()
   for i = 0; i < xs.length(); i = i + 1 {
     if i > 0 {
       sb.write_string(",")
@@ -79,7 +79,7 @@ fn join_csv(xs : Array[String]) -> String {
 /// Rewrite LF line endings as CRLF — the multipart wire grammar is CRLF, but a
 /// MoonBit multi-line string literal carries bare LFs.
 fn to_crlf(s : String) -> String {
-  let sb = StringBuilder::new()
+  let sb = StringBuilder()
   for i = 0; i < s.length(); i = i + 1 {
     if s[i].to_int() == 0x0A {
       sb.write_string("\r\n")

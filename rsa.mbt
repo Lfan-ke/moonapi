@@ -45,7 +45,7 @@ pub fn RsaPrivateKey::from_hex(
 ///|
 /// The public half of a private key — for verifying what it signs.
 pub fn RsaPrivateKey::public_key(self : RsaPrivateKey) -> RsaPublicKey {
-  { n: self.n, e: self.e }
+  { n: self.n, e: self.e, }
 }
 
 ///|

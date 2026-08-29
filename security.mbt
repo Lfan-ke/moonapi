@@ -27,7 +27,7 @@ pub(all) struct OAuth2PasswordRequestForm {
 /// the OAuth2 `scope` form field is one string like `"read write"`.
 fn split_scopes(s : String) -> Array[String] {
   let out : Array[String] = []
-  let sb = StringBuilder::new()
+  let sb = StringBuilder()
   for i = 0; i < s.length(); i = i + 1 {
     if s[i].to_int() == 0x20 {
       if sb.to_string() != "" {
@@ -135,7 +135,7 @@ pub fn OAuth2PasswordBearer::new(
   token_url : String,
   secret : String,
 ) -> OAuth2PasswordBearer {
-  { token_url, secret }
+  { token_url, secret, }
 }
 
 ///|

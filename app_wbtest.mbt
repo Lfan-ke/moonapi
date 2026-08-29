@@ -1,6 +1,6 @@
 ///|
 fn mkreq(m : String, path : String) -> @moonasgi.Request {
-  { http_method: m, path, query_string: b"", headers: [], body: b"" }
+  { http_method: m, path, query_string: b"", headers: [], body: b"", }
 }
 
 ///|
@@ -10,7 +10,7 @@ fn mkreq_full(
   query? : Bytes = b"",
   body? : Bytes = b"",
 ) -> @moonasgi.Request {
-  { http_method: m, path, query_string: query, headers: [], body }
+  { http_method: m, path, query_string: query, headers: [], body, }
 }
 
 ///|
@@ -264,9 +264,9 @@ test "openapi richer info: description/contact/license + servers" {
     version=OpenApi31,
     title="Greet",
     description="qwq api",
-    contact=Some({ name: "heke1228", url: "", email: "emm@qq.com" }),
-    license=Some({ name: "Apache-2.0", url: "https://apache.org" }),
-    servers=[{ url: "https://api.example.com", description: "prod" }],
+    contact=Some({ name: "heke1228", url: "", email: "emm@qq.com", }),
+    license=Some({ name: "Apache-2.0", url: "https://apache.org", }),
+    servers=[{ url: "https://api.example.com", description: "prod", }],
   )
   guard doc is Object(m) else { fail("doc should be an object") }
   guard m.get("info") is Some(Object(info)) else {

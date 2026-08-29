@@ -46,7 +46,7 @@ priv struct EcPoint {
 ///|
 /// The point at infinity.
 fn ec_zero() -> EcPoint {
-  { x: 0, y: 0, infinity: true }
+  { x: 0, y: 0, infinity: true, }
 }
 
 ///|
@@ -93,7 +93,7 @@ fn ec_double(pt : EcPoint) -> EcPoint {
   let lam = fmod_p(num * inv_p(2 * pt.y))
   let x3 = fmod_p(lam * lam - 2 * pt.x)
   let y3 = fmod_p(lam * (pt.x - x3) - pt.y)
-  { x: x3, y: y3, infinity: false }
+  { x: x3, y: y3, infinity: false, }
 }
 
 ///|
@@ -114,7 +114,7 @@ fn ec_add(pa : EcPoint, pb : EcPoint) -> EcPoint {
   let lam = fmod_p((pb.y - pa.y) * inv_p(pb.x - pa.x))
   let x3 = fmod_p(lam * lam - pa.x - pb.x)
   let y3 = fmod_p(lam * (pa.x - x3) - pa.y)
-  { x: x3, y: y3, infinity: false }
+  { x: x3, y: y3, infinity: false, }
 }
 
 ///|
@@ -176,8 +176,8 @@ pub fn ecdsa_p256_sha256_verify(
   let w = inv_n(s)
   let u1 = fmod_n(e * w)
   let u2 = fmod_n(r * w)
-  let g = { x: p256_gx, y: p256_gy, infinity: false }
-  let q = { x: key.x, y: key.y, infinity: false }
+  let g = { x: p256_gx, y: p256_gy, infinity: false, }
+  let q = { x: key.x, y: key.y, infinity: false, }
   let point = ec_add(ec_mul(u1, g), ec_mul(u2, q))
   if point.infinity {
     return false
@@ -231,14 +231,14 @@ pub(all) struct EcdsaPrivateKey {
 ///|
 /// Build a P-256 private key from its hex-encoded scalar.
 pub fn EcdsaPrivateKey::from_hex(d_hex : String) -> EcdsaPrivateKey {
-  { d: BigInt::from_string(d_hex, radix=16) }
+  { d: BigInt::from_string(d_hex, radix=16), }
 }
 
 ///|
 /// The public key `Q = d·G` for this private key.
 pub fn EcdsaPrivateKey::public_key(self : EcdsaPrivateKey) -> EcdsaPublicKey {
-  let q = ec_mul(self.d, { x: p256_gx, y: p256_gy, infinity: false })
-  { x: q.x, y: q.y }
+  let q = ec_mul(self.d, { x: p256_gx, y: p256_gy, infinity: false, })
+  { x: q.x, y: q.y, }
 }
 
 ///|
@@ -249,7 +249,7 @@ pub fn EcdsaPrivateKey::public_key(self : EcdsaPrivateKey) -> EcdsaPublicKey {
 pub fn ecdsa_p256_sha256_sign(msg : Bytes, key : EcdsaPrivateKey) -> Bytes {
   let h1 = sha256(msg)
   let e = BigInt::from_octets(h1[:])
-  let g = { x: p256_gx, y: p256_gy, infinity: false }
+  let g = { x: p256_gx, y: p256_gy, infinity: false, }
   let k = rfc6979_k(key.d, h1)
   let rpt = ec_mul(k, g)
   let r = fmod_n(rpt.x)

@@ -101,7 +101,7 @@ fn main {
 
 ///|
 fn get(path : String, headers : Array[(String, String)]) -> @moonasgi.Request {
-  { http_method: "GET", path, query_string: b"", headers, body: b"" }
+  { http_method: "GET", path, query_string: b"", headers, body: b"", }
 }
 
 ///|
@@ -119,7 +119,7 @@ fn order_detail(msg : String) -> Json {
 ///|
 /// `unit` repeated `n` times — a compressible fixture with real LZ77 matches.
 fn repeat_str(unit : String, n : Int) -> String {
-  let sb = StringBuilder::new()
+  let sb = StringBuilder()
   for _i = 0; _i < n; _i = _i + 1 {
     sb.write_string(unit)
   }

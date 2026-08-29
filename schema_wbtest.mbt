@@ -225,7 +225,7 @@ test "cookie extraction off the Cookie header" {
     headers: [("cookie", "session=abc123; theme=dark")],
     body: b"",
   }
-  let ctx : Context = { request: req, params: Map([]) }
+  let ctx : Context = { request: req, params: Map([]), }
   assert_eq(ctx.cookie("session"), Some("abc123"))
   assert_eq(ctx.cookie("theme"), Some("dark"))
   assert_eq(ctx.cookie("absent"), None)
@@ -309,7 +309,7 @@ test "ToSchema trait bridges to the associated schema function" {
   let u : User = {
     id: 1,
     name: "n",
-    address: { city: "c", zip: "z" },
+    address: { city: "c", zip: "z", },
     tags: [],
   }
   // Generic entry point returns the same descriptor as the associated fn.

@@ -21,7 +21,7 @@ pub(all) struct ServerSentEvent {
 ///|
 /// A data-only event — the common case (`data: ...\n\n`).
 pub fn ServerSentEvent::data(data : String) -> ServerSentEvent {
-  { data, event: None, id: None, retry: None, comment: None }
+  { data, event: None, id: None, retry: None, comment: None, }
 }
 
 ///|
@@ -33,14 +33,14 @@ pub fn ServerSentEvent::new(
   retry? : Int? = None,
   comment? : String? = None,
 ) -> ServerSentEvent {
-  { data, event, id, retry, comment }
+  { data, event, id, retry, comment, }
 }
 
 ///|
 /// A comment-only keep-alive frame (`: <text>\n\n`) — no event is dispatched,
 /// but the bytes keep the connection warm through proxies.
 pub fn ServerSentEvent::keep_alive(comment? : String = "") -> ServerSentEvent {
-  { data: "", event: None, id: None, retry: None, comment: Some(comment) }
+  { data: "", event: None, id: None, retry: None, comment: Some(comment), }
 }
 
 ///|
@@ -49,7 +49,7 @@ pub fn ServerSentEvent::keep_alive(comment? : String = "") -> ServerSentEvent {
 /// own `data:` field.
 fn split_lines(s : String) -> Array[String] {
   let out : Array[String] = []
-  let sb = StringBuilder::new()
+  let sb = StringBuilder()
   for i = 0; i < s.length(); i = i + 1 {
     if s[i].to_int() == 0x0A {
       out.push(sb.to_string())
@@ -67,7 +67,7 @@ fn split_lines(s : String) -> Array[String] {
 /// `retry` fields, then one `data:` line per line of `data`, terminated by the
 /// blank line that dispatches the event.
 pub fn ServerSentEvent::encode(self : ServerSentEvent) -> String {
-  let sb = StringBuilder::new()
+  let sb = StringBuilder()
   match self.comment {
     Some(c) =>
       for line in split_lines(c) {
@@ -127,7 +127,7 @@ pub fn sse_response(
   status? : Int = 200,
   headers? : Array[(String, String)] = [],
 ) -> @moonasgi.Response {
-  let sb = StringBuilder::new()
+  let sb = StringBuilder()
   for ev in events {
     sb.write_string(ev.encode())
   }

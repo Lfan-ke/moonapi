@@ -47,7 +47,7 @@ fn main {
 /// Join strings with `; ` — the run log is a list, which renders through `Debug`
 /// rather than string interpolation.
 fn join_csv(xs : Array[String]) -> String {
-  let sb = StringBuilder::new()
+  let sb = StringBuilder()
   for i = 0; i < xs.length(); i = i + 1 {
     if i > 0 {
       sb.write_string("; ")

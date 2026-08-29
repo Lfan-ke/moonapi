@@ -77,7 +77,7 @@ fn main {
   let user : @moonapi.User = {
     id: 233,
     name: "lfanke",
-    address: { city: "emm", zip: "23333" },
+    address: { city: "emm", zip: "23333", },
     tags: ["a", "b"],
   }
   println(

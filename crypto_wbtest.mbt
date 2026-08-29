@@ -3,7 +3,7 @@
 /// published NIST / RFC vectors.
 fn to_hex(b : Bytes) -> String {
   let digits = "0123456789abcdef"
-  let sb = StringBuilder::new()
+  let sb = StringBuilder()
   for i = 0; i < b.length(); i = i + 1 {
     let v = b[i].to_int()
     sb.write_char(digits[v / 16].unsafe_to_char())

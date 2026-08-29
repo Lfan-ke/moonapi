@@ -512,7 +512,7 @@ fn App::route_and_dispatch(
     match match_path(route.path, request.path) {
       Some(params) =>
         if route.verb == verb {
-          let ctx : Context = { request, params }
+          let ctx : Context = { request, params, }
           match self.enforce_security(ctx, route.security) {
             Some(denied) => return self.apply_status(ctx, denied)
             None => ()
@@ -544,7 +544,7 @@ fn App::route_and_dispatch(
       None => ()
     }
   }
-  let ctx : Context = { request, params: Map([]) }
+  let ctx : Context = { request, params: Map([]), }
   if method_mismatch {
     self.apply_status(ctx, text(405, "Method Not Allowed"))
   } else {
@@ -596,7 +596,7 @@ fn strip_prefix(prefix : String, path : String) -> String? {
       return None
     }
   }
-  let sb = StringBuilder::new()
+  let sb = StringBuilder()
   for i = pp.length(); i < ph.length(); i = i + 1 {
     sb.write_string("/")
     sb.write_string(ph[i])

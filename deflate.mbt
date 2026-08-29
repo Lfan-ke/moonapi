@@ -104,7 +104,7 @@ priv struct BitWriter {
 
 ///|
 fn BitWriter::new() -> BitWriter {
-  { buf: Buffer(), acc: 0, nbits: 0 }
+  { buf: Buffer(), acc: 0, nbits: 0, }
 }
 
 ///|
@@ -254,7 +254,7 @@ priv struct BitReader {
 
 ///|
 fn BitReader::new(data : Bytes) -> BitReader {
-  { data, pos: 0, acc: 0, nbits: 0 }
+  { data, pos: 0, acc: 0, nbits: 0, }
 }
 
 ///|

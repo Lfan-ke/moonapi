@@ -108,13 +108,13 @@ fn ed_add(pp : EdPoint, qq : EdPoint) -> EdPoint {
   let dxy = edmod(ed_d * x1 * x2 * y1 * y2)
   let x3 = edmod((x1 * y2 + x2 * y1) * edinv(edmod(1 + dxy)))
   let y3 = edmod((y1 * y2 + x1 * x2) * edinv(edmod(1 - dxy)))
-  { x: x3, y: y3 }
+  { x: x3, y: y3, }
 }
 
 ///|
 /// Scalar multiplication `e · pt` by double-and-add.
 fn ed_mul(e : BigInt, pt : EdPoint) -> EdPoint {
-  let mut result : EdPoint = { x: 0, y: 1 }
+  let mut result : EdPoint = { x: 0, y: 1, }
   let mut addend = pt
   let mut k = e
   while k > (0 : BigInt) {
@@ -148,7 +148,7 @@ fn ed_decode_point(s : BytesView) -> EdPoint {
   if parity != sign {
     x = ed_p - x
   }
-  { x, y }
+  { x, y, }
 }
 
 ///|
@@ -170,7 +170,7 @@ pub fn ed25519_verify(pub_key : Bytes, msg : Bytes, sig : Bytes) -> Bool {
   hbuf.write_bytes(pub_key[:])
   hbuf.write_bytes(msg[:])
   let k = edmod_l(ed_le_int(sha512(hbuf.to_bytes())[:]))
-  let lhs = ed_mul(s, { x: ed_bx, y: ed_by })
+  let lhs = ed_mul(s, { x: ed_bx, y: ed_by, })
   let rhs = ed_add(r_pt, ed_mul(k, a_pt))
   lhs.x == rhs.x && lhs.y == rhs.y
 }
@@ -227,7 +227,7 @@ fn ed_expand_seed(seed : Bytes) -> (BigInt, Bytes) {
 /// seed.
 pub fn ed25519_public_from_seed(seed : Bytes) -> Bytes {
   let (s, _) = ed_expand_seed(seed)
-  ed_encode_point(ed_mul(s, { x: ed_bx, y: ed_by }))
+  ed_encode_point(ed_mul(s, { x: ed_bx, y: ed_by, }))
 }
 
 ///|
@@ -236,12 +236,12 @@ pub fn ed25519_public_from_seed(seed : Bytes) -> Bytes {
 /// mod l`, `R = [r]B`, `k = SHA-512(R || A || M) mod l`, `S = (r + k·s) mod l`.
 pub fn ed25519_sign(seed : Bytes, msg : Bytes) -> Bytes {
   let (s, prefix) = ed_expand_seed(seed)
-  let big_a = ed_encode_point(ed_mul(s, { x: ed_bx, y: ed_by }))
+  let big_a = ed_encode_point(ed_mul(s, { x: ed_bx, y: ed_by, }))
   let rbuf = Buffer()
   rbuf.write_bytes(prefix)
   rbuf.write_bytes(msg)
   let r = edmod_l(ed_le_int(sha512(rbuf.to_bytes())[:]))
-  let big_r = ed_encode_point(ed_mul(r, { x: ed_bx, y: ed_by }))
+  let big_r = ed_encode_point(ed_mul(r, { x: ed_bx, y: ed_by, }))
   let kbuf = Buffer()
   kbuf.write_bytes(big_r)
   kbuf.write_bytes(big_a)
@@ -270,7 +270,7 @@ pub fn Ed25519PublicKey::from_hex(hex : String) -> Ed25519PublicKey {
     let lo = hex_nibble(hex[i + 1].to_int())
     buf.write_byte(((hi << 4) | lo).to_byte())
   }
-  { key: buf.to_bytes() }
+  { key: buf.to_bytes(), }
 }
 
 ///|
@@ -289,7 +289,7 @@ pub fn Ed25519PrivateKey::from_hex(hex : String) -> Ed25519PrivateKey {
     let lo = hex_nibble(hex[i + 1].to_int())
     buf.write_byte(((hi << 4) | lo).to_byte())
   }
-  { seed: buf.to_bytes() }
+  { seed: buf.to_bytes(), }
 }
 
 ///|
@@ -297,7 +297,7 @@ pub fn Ed25519PrivateKey::from_hex(hex : String) -> Ed25519PrivateKey {
 pub fn Ed25519PrivateKey::public_key(
   self : Ed25519PrivateKey,
 ) -> Ed25519PublicKey {
-  { key: ed25519_public_from_seed(self.seed) }
+  { key: ed25519_public_from_seed(self.seed), }
 }
 
 ///|

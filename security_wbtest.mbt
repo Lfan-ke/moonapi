@@ -40,7 +40,7 @@ fn fixed(t : Int64) -> () -> Int64 {
 ///|
 test "bearer_token: parses Bearer, case-insensitive scheme, rejects others" {
   fn ctx_with(auth : String) -> Context {
-    { request: mkreq_auth("GET", "/", auth), params: Map([]) }
+    { request: mkreq_auth("GET", "/", auth), params: Map([]), }
   }
 
   assert_eq(ctx_with("Bearer abc.def.ghi").bearer_token(), Some("abc.def.ghi"))
