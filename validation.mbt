@@ -7,38 +7,62 @@ fn decode_field(raw : Bytes) -> String {
 }
 
 ///|
-/// Look up a query-string parameter by name, e.g. `?limit=10&q=cat`. The query
-/// string is split on `&` into `key=value` pairs (first `=` wins; a bare key
-/// yields `""`). Percent-decoding is intentionally out of scope for v0.2.
-pub fn Context::query(self : Context, name : String) -> String? {
-  let s = decode_field(self.request.query_string)
-  let n = s.length()
+/// Split a query string into decoded `key`/`value` pairs. Splitting happens on the
+/// raw bytes so that a percent-escaped `&` or `=` inside a value cannot be mistaken
+/// for a separator; each half is percent/plus-decoded afterwards. A pair with no
+/// `=` is a bare key with an empty value.
+fn query_pairs(raw : Bytes) -> Array[(String, String)] {
+  let out : Array[(String, String)] = []
+  let n = raw.length()
   let mut start = 0
   for i = 0; i <= n; i = i + 1 {
-    if i == n || s[i] == '&' {
+    if i == n || raw[i] == b'&' {
       if i > start {
-        let pair = s[start:i].to_owned()
-        let m = pair.length()
         let mut eq = -1
-        for j = 0; j < m; j = j + 1 {
-          if pair[j] == '=' {
+        for j = start; j < i; j = j + 1 {
+          if raw[j] == b'=' {
             eq = j
             break
           }
         }
-        let (k, v) = if eq < 0 {
-          (pair, "")
+        if eq < 0 {
+          out.push((decode_component(raw, start, i), ""))
         } else {
-          (pair[0:eq].to_owned(), pair[eq + 1:m].to_owned())
-        }
-        if k == name {
-          return Some(v)
+          out.push(
+            (decode_component(raw, start, eq), decode_component(raw, eq + 1, i)),
+          )
         }
       }
       start = i + 1
     }
   }
+  out
+}
+
+///|
+/// Look up a query-string parameter by name, e.g. `?limit=10&q=cat%20dog`. Keys and
+/// values are percent/plus-decoded, so `q` above reads back as `cat dog`. When a key
+/// repeats, the first occurrence wins; use `query_all` to read every one.
+pub fn Context::query(self : Context, name : String) -> String? {
+  for kv in query_pairs(self.request.query_string) {
+    if kv.0 == name {
+      return Some(kv.1)
+    }
+  }
   None
+}
+
+///|
+/// Every value given for `name`, in the order they appear — `?tag=a&tag=b` reads
+/// back as `["a", "b"]`. Empty when the key is absent.
+pub fn Context::query_all(self : Context, name : String) -> Array[String] {
+  let out : Array[String] = []
+  for kv in query_pairs(self.request.query_string) {
+    if kv.0 == name {
+      out.push(kv.1)
+    }
+  }
+  out
 }
 
 ///|
