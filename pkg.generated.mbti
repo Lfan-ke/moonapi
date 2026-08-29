@@ -126,6 +126,8 @@ pub struct App {
   enforcers : Map[String, (Context, Array[String], Int64) -> Result[AuthenticatedUser, @moonasgi.Response]]
   status_handlers : Map[Int, (Context) -> @moonasgi.Response]
   mounts : Array[(String, App)]
+  startup_hooks : Array[() -> Unit raise]
+  shutdown_hooks : Array[() -> Unit raise]
   mut clock : () -> Int64
 }
 pub fn App::add_security_scheme(Self, String, SecurityScheme) -> Unit
@@ -135,9 +137,12 @@ pub fn App::exception_handler(Self, (Context, Error) -> @moonasgi.Response?) -> 
 pub fn App::get(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, tags? : Array[String], deprecated? : Bool, endpoint? : Endpoint?, security? : Array[SecurityRequirement]) -> Unit
 pub fn App::handle(Self, @moonasgi.Request) -> @moonasgi.Response
 pub fn App::handle_with_background(Self, @moonasgi.Request) -> (@moonasgi.Response, BackgroundTasks)
+pub fn App::lifespan_handler(Self) -> @moonasgi.LifespanHandler
 pub fn App::middleware(Self, ((@moonasgi.Request) -> @moonasgi.Response) -> (@moonasgi.Request) -> @moonasgi.Response) -> Unit
 pub fn App::mount(Self, String, Self) -> Unit
 pub fn App::new() -> Self
+pub fn App::on_shutdown(Self, () -> Unit raise) -> Unit
+pub fn App::on_startup(Self, () -> Unit raise) -> Unit
 pub fn App::openapi(Self, version? : OpenApiVersion, title? : String, api_version? : String, description? : String, terms_of_service? : String, contact? : Contact?, license? : License?, servers? : Array[Server]) -> Json
 pub fn App::openapi_json(Self, version? : OpenApiVersion) -> String
 pub fn App::patch(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, tags? : Array[String], deprecated? : Bool, endpoint? : Endpoint?, security? : Array[SecurityRequirement]) -> Unit

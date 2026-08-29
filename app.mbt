@@ -96,6 +96,10 @@ pub struct App {
   enforcers : Map[String, SecurityEnforcer]
   status_handlers : Map[Int, (Context) -> @moonasgi.Response]
   mounts : Array[(String, App)]
+  // Run in registration order when the server starts, and in reverse when it stops,
+  // so a resource is torn down before whatever it was built on.
+  startup_hooks : Array[() -> Unit raise]
+  shutdown_hooks : Array[() -> Unit raise]
   mut clock : () -> Int64
 }
 
@@ -113,8 +117,27 @@ pub fn App::new() -> App {
     enforcers: Map([]),
     status_handlers: Map([]),
     mounts: [],
+    startup_hooks: [],
+    shutdown_hooks: [],
     clock: () => 0L,
   }
+}
+
+///|
+/// Run `hook` when the server starts, before it accepts the first request (←
+/// FastAPI's `on_event("startup")`). Hooks run in the order they were registered;
+/// one that raises aborts startup, and the server is told why.
+pub fn App::on_startup(self : App, hook : () -> Unit raise) -> Unit {
+  self.startup_hooks.push(hook)
+}
+
+///|
+/// Run `hook` when the server shuts down, after the last request has been served (←
+/// FastAPI's `on_event("shutdown")`). Hooks run in reverse registration order, so a
+/// resource is released before whatever it was opened from. A hook that raises does
+/// not stop the others — shutdown reports the first failure once the rest have run.
+pub fn App::on_shutdown(self : App, hook : () -> Unit raise) -> Unit {
+  self.shutdown_hooks.push(hook)
 }
 
 ///|
@@ -626,6 +649,90 @@ async fn drain_body(receive : @moonasgi.Receive) -> Bytes {
 }
 
 ///|
+/// This app's hooks as a moonasgi `LifespanHandler` — the synchronous core, which is
+/// what makes boot and teardown testable on every backend without a server. Mounted
+/// apps are included: a mount is part of the composition being started, and nothing
+/// else would ever drive its hooks.
+pub fn App::lifespan_handler(self : App) -> @moonasgi.LifespanHandler {
+  @moonasgi.LifespanHandler::new(
+    on_startup=_scope => {
+      match self.run_startup_hooks() {
+        None => Complete
+        Some(why) => Failed(message=why)
+      }
+    },
+    on_shutdown=_scope => {
+      match self.run_shutdown_hooks() {
+        None => Complete
+        Some(why) => Failed(message=why)
+      }
+    },
+  )
+}
+
+///|
+/// Answer the ASGI lifespan protocol: run each server message through the handler
+/// above and send back its reply. The run ends on shutdown, or on a failed startup —
+/// ASGI has the server abort the boot there and never send `lifespan.shutdown`.
+async fn App::serve_lifespan(
+  self : App,
+  scope : @moonasgi.Scope,
+  receive : @moonasgi.Receive,
+  send : @moonasgi.Send,
+) -> Unit {
+  let handler = self.lifespan_handler()
+  for ;; {
+    let event = receive()
+    let replies = @moonasgi.run_lifespan(handler, scope, [event])
+    for reply in replies {
+      send(reply)
+    }
+    if event is LifespanShutdown {
+      break
+    }
+    if replies.iter().any(r => r is LifespanStartupFailed(_)) {
+      break
+    }
+  }
+}
+
+///|
+/// Run every startup hook, this app's mounts included, stopping at the first that
+/// raises and returning its message.
+fn App::run_startup_hooks(self : App) -> String? {
+  for hook in self.startup_hooks {
+    hook() catch {
+      err => return Some(err.to_string())
+    }
+  }
+  for mount in self.mounts {
+    if mount.1.run_startup_hooks() is Some(why) {
+      return Some(why)
+    }
+  }
+  None
+}
+
+///|
+/// Run every shutdown hook in reverse registration order, mounts first since they
+/// were started last. Every hook runs even if an earlier one raised; the first
+/// failure is what comes back.
+fn App::run_shutdown_hooks(self : App) -> String? {
+  let mut failure = None
+  for i = self.mounts.length() - 1; i >= 0; i = i - 1 {
+    if self.mounts[i].1.run_shutdown_hooks() is Some(why) && failure is None {
+      failure = Some(why)
+    }
+  }
+  for i = self.shutdown_hooks.length() - 1; i >= 0; i = i - 1 {
+    self.shutdown_hooks[i]() catch {
+      err => if failure is None { failure = Some(err.to_string()) }
+    }
+  }
+  failure
+}
+
+///|
 /// Compile the app to a moonasgi `AsgiApp` a server can run: drain the request
 /// body, route it, and stream the response back over the SEAM.
 pub fn App::to_asgi(self : App) -> @moonasgi.AsgiApp {
@@ -653,7 +760,7 @@ pub fn App::to_asgi(self : App) -> @moonasgi.AsgiApp {
         bg.run()
       }
       WebSocket(wss) => self.serve_websocket(wss, receive, send)
-      _ => ()
+      Lifespan(_) => self.serve_lifespan(scope, receive, send)
     }
   }
 }

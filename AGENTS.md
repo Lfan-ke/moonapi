@@ -17,4 +17,5 @@
 - Anything inbound is attacker-controlled, so extraction is total: it returns `None` or a lossy decode rather than raising. Keep that property when adding an extractor.
 - Query strings are split over the raw bytes and percent/plus-decoded afterwards, so an escaped `&` or `=` inside a value cannot split a pair. The decoder is `decode_component` in `multipart.mbt` — reuse it rather than writing another.
 - `openapi.mbt` emits three dialects (Swagger 2.0, OpenAPI 3.0, 3.1) from one `Route` set. A new field on a route has to be given a home in each, or deliberately skipped for the ones that cannot express it.
+- `to_asgi` answers all three scopes. Lifespan runs through `lifespan_handler`, moonasgi's synchronous core, which is why boot and teardown are testable on every backend without a server: startup hooks in registration order, shutdown hooks in reverse, and a failed startup ends the run the way ASGI asks. New lifecycle behaviour belongs in that handler, not in the async loop around it.
 - The tests compare emitted JSON verbatim. Reordering keys in a generator will fail them; that is deliberate, since the emitted document is what users read.

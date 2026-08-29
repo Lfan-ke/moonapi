@@ -291,3 +291,73 @@ test "openapi richer info: description/contact/license + servers" {
   guard sv[0] is Object(s0) else { fail("server should be an object") }
   assert_eq(s0.get("url"), Some("https://api.example.com".to_json()))
 }
+
+///|
+/// Startup hooks run in registration order, shutdown hooks in reverse, and a mounted
+/// app's hooks come along — a mount is part of the composition the server starts.
+test "lifespan hooks run in order, mounts included" {
+  let log : Array[String] = []
+  let app = App::new()
+  app.on_startup(() => log.push("open-db"))
+  app.on_startup(() => log.push("warm-cache"))
+  app.on_shutdown(() => log.push("close-db"))
+  app.on_shutdown(() => log.push("flush-cache"))
+  let sub = App::new()
+  sub.on_startup(() => log.push("sub-open"))
+  sub.on_shutdown(() => log.push("sub-close"))
+  app.mount("/sub", sub)
+  let scope = @moonasgi.Scope::Lifespan(@moonasgi.LifespanScope::new())
+  let out = @moonasgi.run_lifespan(app.lifespan_handler(), scope, [
+    @moonasgi.Event::LifespanStartup,
+    @moonasgi.Event::LifespanShutdown,
+  ])
+  assert_eq(out.length(), 2)
+  assert_eq(out[0] == @moonasgi.Event::LifespanStartupComplete, true)
+  assert_eq(out[1] == @moonasgi.Event::LifespanShutdownComplete, true)
+  assert_eq(log, [
+    "open-db", "warm-cache", "sub-open", "sub-close", "flush-cache", "close-db",
+  ])
+}
+
+///|
+/// A startup hook that raises fails the boot with its message, and nothing after it
+/// runs — ASGI has the server abort there rather than serve a half-built app.
+test "a raising startup hook fails the boot" {
+  let log : Array[String] = []
+  let app = App::new()
+  app.on_startup(() => log.push("first"))
+  app.on_startup(() => raise Failure("no database at qwq:233"))
+  app.on_startup(() => log.push("never"))
+  let scope = @moonasgi.Scope::Lifespan(@moonasgi.LifespanScope::new())
+  let out = @moonasgi.run_lifespan(app.lifespan_handler(), scope, [
+    @moonasgi.Event::LifespanStartup,
+  ])
+  assert_eq(out.length(), 1)
+  let failed = match out[0] {
+    LifespanStartupFailed(message~) => message
+    _ => "not a failure"
+  }
+  assert_eq(failed.contains("no database at qwq:233"), true)
+  assert_eq(log, ["first"])
+}
+
+///|
+/// A shutdown hook that raises does not strand the others: teardown keeps going and
+/// reports the first failure once everything has had its turn.
+test "a raising shutdown hook still lets the rest run" {
+  let log : Array[String] = []
+  let app = App::new()
+  app.on_shutdown(() => log.push("last-registered-runs-first"))
+  app.on_shutdown(() => raise Failure("flush failed"))
+  app.on_shutdown(() => log.push("still-runs"))
+  let scope = @moonasgi.Scope::Lifespan(@moonasgi.LifespanScope::new())
+  let out = @moonasgi.run_lifespan(app.lifespan_handler(), scope, [
+    @moonasgi.Event::LifespanShutdown,
+  ])
+  let failed = match out[0] {
+    LifespanShutdownFailed(message~) => message
+    _ => "not a failure"
+  }
+  assert_eq(failed.contains("flush failed"), true)
+  assert_eq(log, ["still-runs", "last-registered-runs-first"])
+}
