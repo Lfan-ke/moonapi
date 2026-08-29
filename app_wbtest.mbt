@@ -151,7 +151,7 @@ test "openapi emits path parameters" {
     Object(m) =>
       match m.get("paths") {
         Some(Object(p)) =>
-          match p.get("/users/:id") {
+          match p.get("/users/{id}") {
             Some(Object(methods)) =>
               match methods.get("get") {
                 Some(Object(op)) =>
@@ -369,7 +369,8 @@ test "a raising shutdown hook still lets the rest run" {
 test "enable_docs serves the spec, Swagger UI and ReDoc without joining the spec" {
   let app = App::new()
   app.get("/hello", _ctx => text(200, "hhh"), summary="greet")
-  app.enable_docs(title="qwq api")
+  app.describe(title="qwq api")
+  app.enable_docs()
   let spec = app.handle(mkreq("GET", "/openapi.json"))
   assert_eq(spec.status, 200)
   assert_eq(spec.header("content-type"), Some("application/json"))
@@ -404,4 +405,119 @@ test "enable_docs leaves off whatever is passed None" {
   assert_eq(app.handle(mkreq("GET", "/openapi.json")).status, 200)
   assert_eq(app.handle(mkreq("GET", "/docs")).status, 404)
   assert_eq(app.handle(mkreq("GET", "/redoc")).status, 404)
+}
+
+///|
+/// A path parameter's `name` has to correspond to a template expression in the path
+/// key, or the document is invalid and Swagger UI has nothing to substitute into.
+/// The router keeps its own `:id` syntax; only the emitted document is templated.
+test "openapi keys paths by their template form" {
+  let app = App::new()
+  app.get("/users/:id/posts/:slug", _ctx => text(200, "hhh"))
+  let doc = app.openapi()
+  let keys = match doc {
+    Object(m) =>
+      match m.get("paths") {
+        Some(Object(p)) => p.keys().collect()
+        _ => []
+      }
+    _ => []
+  }
+  assert_eq(keys, ["/users/{id}/posts/{slug}"])
+  // The route itself still matches the request as written.
+  assert_eq(app.handle(mkreq("GET", "/users/42/posts/qwq")).status, 200)
+}
+
+///|
+/// A verb the framework does not know is not silently answered as a GET, a 405
+/// names what the resource does allow, and a GET route answers HEAD with the same
+/// headers and no body.
+test "method handling: unknown verbs, Allow on 405, and HEAD off GET" {
+  let app = App::new()
+  app.get("/thing", _ctx => text(200, "hhh"))
+  app.post("/thing", _ctx => text(201, "made"))
+  // An invented verb reaches no handler.
+  let weird = app.handle(mkreq("TRACE", "/thing"))
+  assert_eq(weird.status, 405)
+  assert_eq(weird.header("content-type"), Some("application/json"))
+  // The Allow header lists what is registered, HEAD included.
+  let denied = app.handle(mkreq("DELETE", "/thing"))
+  assert_eq(denied.status, 405)
+  assert_eq(denied.header("allow"), Some("GET, HEAD, POST"))
+  // HEAD gets the GET route's status and headers, without the body.
+  let head = app.handle(mkreq("HEAD", "/thing"))
+  assert_eq(head.status, 200)
+  assert_eq(head.body.length(), 0)
+  // A miss is JSON too, the same shape every other error uses.
+  let missing = app.handle(mkreq("GET", "/nope"))
+  assert_eq(missing.status, 404)
+  assert_eq(@utf8.decode_lossy(missing.body), "{\"detail\":\"Not Found\"}")
+}
+
+///|
+/// A route that declares its parameters gets them checked before the handler runs,
+/// the way FastAPI does — the document and the enforcement come off the same
+/// descriptor, so a spec promising `id: integer` cannot be a lie.
+test "a declared endpoint is enforced with a 422 before the handler" {
+  let app = App::new()
+  let reached : Array[String] = []
+  let ep = Endpoint::new(params=[
+    Param::new("id", InPath, schema=SInt),
+    Param::new("q", InQuery, required=false),
+  ])
+  app.get(
+    "/items/:id",
+    ctx => {
+      reached.push(ctx.param("id").unwrap())
+      text(200, "ok")
+    },
+    endpoint=Some(ep),
+  )
+  // A well-formed request reaches the handler.
+  assert_eq(app.handle(mkreq("GET", "/items/233")).status, 200)
+  assert_eq(reached, ["233"])
+  // A path parameter that is not an integer is refused, and the handler never ran.
+  let bad = app.handle(mkreq("GET", "/items/qwq"))
+  assert_eq(bad.status, 422)
+  assert_eq(bad.header("content-type"), Some("application/json"))
+  assert_eq(@utf8.decode_lossy(bad.body).contains("int_parsing"), true)
+  assert_eq(reached, ["233"])
+}
+
+///|
+/// A handler that would rather drive the descriptor itself can opt out.
+test "validate=false leaves the descriptor to the handler" {
+  let app = App::new()
+  let ep = Endpoint::new(params=[Param::new("id", InPath, schema=SInt)])
+  app.get(
+    "/items/:id",
+    _ctx => text(200, "handler ran"),
+    endpoint=Some(ep),
+    validate=false,
+  )
+  assert_eq(app.handle(mkreq("GET", "/items/qwq")).status, 200)
+}
+
+///|
+/// The document a client fetches from `/openapi.json` says what the app was told to
+/// say about itself. Before `describe`, the served spec was permanently
+/// `{"title":"moonapi","version":"0.1.0"}` no matter what the caller had configured.
+test "the served document carries the app's own metadata" {
+  let app = App::new()
+  app.get("/hello", _ctx => text(200, "hhh"))
+  app.describe(
+    title="greet api",
+    api_version="2.3.0",
+    description="says hello",
+    servers=[{ url: "https://api.example.test", description: "prod", }],
+  )
+  app.enable_docs()
+  let served = resp_json(app.handle(mkreq("GET", "/openapi.json")))
+  let info = dig(served, ["info"]).unwrap()
+  assert_eq(json_str(info, "title"), "greet api")
+  assert_eq(json_str(info, "version"), "2.3.0")
+  assert_eq(json_str(info, "description"), "says hello")
+  // The Swagger page is titled the same, rather than carrying its own name.
+  let docs = @utf8.decode_lossy(app.handle(mkreq("GET", "/docs")).body)
+  assert_eq(docs.contains("<title>greet api</title>"), true)
 }

@@ -12,7 +12,12 @@ fn main {
     _ctx => @moonapi.text(200, "hello, heke1228"),
     summary="greet a user",
   )
-  app.enable_docs(title="greet api")
+  app.describe(
+    title="greet api",
+    description="One route, documented three ways.",
+    api_version="1.0.0",
+  )
+  app.enable_docs()
   for path in ["/openapi.json", "/docs", "/redoc"] {
     let resp = app.handle({
       http_method: "GET",

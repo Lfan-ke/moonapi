@@ -39,6 +39,31 @@ fn path_parameter(name : String, version : OpenApiVersion) -> Json {
 }
 
 ///|
+/// Rewrite a route's `:name` segments into OpenAPI's `{name}` template expressions.
+/// The spec requires a path parameter's `name` to correspond to a template
+/// expression in the path itself, so emitting the route string as written produces a
+/// document validators reject and Swagger UI cannot substitute values into.
+fn path_template(path : String) -> String {
+  let out = StringBuilder()
+  for seg in segments(path) {
+    out.write_char('/')
+    if seg.length() > 0 && seg[0] == ':' {
+      out.write_char('{')
+      out.write_string(seg[1:].to_owned())
+      out.write_char('}')
+    } else {
+      out.write_string(seg)
+    }
+  }
+  let rendered = out.to_string()
+  if rendered == "" {
+    "/"
+  } else {
+    rendered
+  }
+}
+
+///|
 /// The `:name` parameters of a route path, in order, as OpenAPI parameter
 /// objects — the faithful equivalent of FastAPI reading them off the signature.
 fn path_parameters(path : String, version : OpenApiVersion) -> Array[Json] {
@@ -79,6 +104,34 @@ pub(all) struct Server {
 }
 
 ///|
+/// What the document says about the API itself — FastAPI's `info` block plus
+/// `servers`. An app carries one (`App::describe` sets it) so that every emission
+/// of the document, including the route `enable_docs` registers, agrees.
+pub(all) struct ApiInfo {
+  title : String
+  api_version : String
+  description : String
+  terms_of_service : String
+  contact : Contact?
+  license : License?
+  servers : Array[Server]
+}
+
+///|
+/// The defaults an app starts with.
+pub fn ApiInfo::new() -> ApiInfo {
+  {
+    title: "moonapi",
+    api_version: "0.1.0",
+    description: "",
+    terms_of_service: "",
+    contact: None,
+    license: None,
+    servers: [],
+  }
+}
+
+///|
 /// Build the app's OpenAPI document as a `Json` value, walking the registered
 /// routes — this app's and every mounted sub-app's, each under its prefix — into
 /// paths, methods and operations. `version` picks the dialect: Swagger 2.0,
@@ -87,14 +140,23 @@ pub(all) struct Server {
 pub fn App::openapi(
   self : App,
   version? : OpenApiVersion = OpenApi31,
-  title? : String = "moonapi",
-  api_version? : String = "0.1.0",
-  description? : String = "",
-  terms_of_service? : String = "",
-  contact? : Contact? = None,
-  license? : License? = None,
-  servers? : Array[Server] = [],
+  title? : String,
+  api_version? : String,
+  description? : String,
+  terms_of_service? : String,
+  contact? : Contact?,
+  license? : License?,
+  servers? : Array[Server],
 ) -> Json {
+  // An explicit argument wins; otherwise the app's own metadata, so the served
+  // document and a hand-built one agree.
+  let title = title.unwrap_or(self.info.title)
+  let api_version = api_version.unwrap_or(self.info.api_version)
+  let description = description.unwrap_or(self.info.description)
+  let terms_of_service = terms_of_service.unwrap_or(self.info.terms_of_service)
+  let contact = contact.unwrap_or(self.info.contact)
+  let license = license.unwrap_or(self.info.license)
+  let servers = servers.unwrap_or(self.info.servers)
   let paths : Map[String, Json] = Map([])
   let defs : Map[String, Json] = Map([])
   // Own routes plus every mounted sub-app's routes, each under its prefix.
@@ -137,12 +199,13 @@ pub fn App::openapi(
       Some(s) => op["security"] = s
       None => ()
     }
-    let item = match paths.get(full_path) {
+    let doc_path = path_template(full_path)
+    let item = match paths.get(doc_path) {
       Some(Object(m)) => m
       _ => Map([])
     }
     item[method_lower(route.verb)] = op.to_json()
-    paths[full_path] = item.to_json()
+    paths[doc_path] = item.to_json()
   }
   let info : Map[String, Json] = Map([
     ("title", title.to_json()),

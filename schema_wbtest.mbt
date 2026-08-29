@@ -126,14 +126,15 @@ test "openapi 3.1: response body is a typed $ref, with full component schemas" {
 test "openapi 3.1: typed path parameter carries an integer schema" {
   let app = demo_app()
   let doc = app.openapi(version=OpenApi31)
-  let params = dig_arr(doc, ["paths", "/users/:id", "get", "parameters"])
+  // The document keys paths by OpenAPI's template form, not the router's `:id`.
+  let params = dig_arr(doc, ["paths", "/users/{id}", "get", "parameters"])
   assert_eq(params.length(), 1)
   assert_eq(json_str(params[0], "name"), "id")
   assert_eq(json_str(params[0], "in"), "path")
   assert_eq(json_str(dig(params[0], ["schema"]).unwrap(), "type"), "integer")
   // The 200 response body is a User $ref.
   let ok = dig(doc, [
-    "paths", "/users/:id", "get", "responses", "200", "content", "application/json",
+    "paths", "/users/{id}", "get", "responses", "200", "content", "application/json",
     "schema",
   ]).unwrap()
   assert_eq(json_str(ok, "$ref"), "#/components/schemas/User")

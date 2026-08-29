@@ -11,16 +11,32 @@ pub(all) enum Method {
 } derive(Eq)
 
 ///|
-fn parse_method(s : String) -> Method {
+fn parse_method(s : String) -> Method? {
   match s {
-    "GET" => Get
-    "POST" => Post
-    "PUT" => Put
-    "PATCH" => Patch
-    "DELETE" => Delete
-    "HEAD" => Head
-    "OPTIONS" => Options
-    _ => Get
+    "GET" => Some(Get)
+    "POST" => Some(Post)
+    "PUT" => Some(Put)
+    "PATCH" => Some(Patch)
+    "DELETE" => Some(Delete)
+    "HEAD" => Some(Head)
+    "OPTIONS" => Some(Options)
+    // TRACE, CONNECT, or something invented. Answering it as a GET would run a
+    // handler the caller never asked for.
+    _ => None
+  }
+}
+
+///|
+/// A method's name as it appears in an `Allow` header.
+fn method_name(m : Method) -> String {
+  match m {
+    Get => "GET"
+    Post => "POST"
+    Put => "PUT"
+    Patch => "PATCH"
+    Delete => "DELETE"
+    Head => "HEAD"
+    Options => "OPTIONS"
   }
 }
 
@@ -82,6 +98,10 @@ struct Route {
   // FastAPI's `include_in_schema`: a route that serves the documentation itself has
   // no business appearing in the document it serves.
   include_in_schema : Bool
+  // Whether the declared `endpoint` is checked before the handler runs. On by
+  // default: a route that advertises constraints in its documentation and does not
+  // apply them is worse than one that declares nothing.
+  validate : Bool
 }
 
 ///|
@@ -103,6 +123,10 @@ pub struct App {
   // so a resource is torn down before whatever it was built on.
   startup_hooks : Array[() -> Unit raise]
   shutdown_hooks : Array[() -> Unit raise]
+  // What the emitted document says about itself. `enable_docs` serves the same
+  // values, so the page a reader opens is not a different API from the one
+  // `App::openapi` describes.
+  mut info : ApiInfo
   mut clock : () -> Int64
 }
 
@@ -122,7 +146,35 @@ pub fn App::new() -> App {
     mounts: [],
     startup_hooks: [],
     shutdown_hooks: [],
+    info: ApiInfo::new(),
     clock: () => 0L,
+  }
+}
+
+///|
+/// Set what the OpenAPI document says about this API (← FastAPI's `FastAPI(title=…,
+/// description=…, contact=…, license_info=…, servers=…)`). `App::openapi` and the
+/// `/openapi.json` route `enable_docs` registers both read it, so the document a
+/// client fetches and the one a test builds cannot describe different APIs.
+pub fn App::describe(
+  self : App,
+  title? : String,
+  api_version? : String,
+  description? : String,
+  terms_of_service? : String,
+  contact? : Contact?,
+  license? : License?,
+  servers? : Array[Server],
+) -> Unit {
+  let cur = self.info
+  self.info = {
+    title: title.unwrap_or(cur.title),
+    api_version: api_version.unwrap_or(cur.api_version),
+    description: description.unwrap_or(cur.description),
+    terms_of_service: terms_of_service.unwrap_or(cur.terms_of_service),
+    contact: contact.unwrap_or(cur.contact),
+    license: license.unwrap_or(cur.license),
+    servers: servers.unwrap_or(cur.servers),
   }
 }
 
@@ -197,6 +249,7 @@ pub fn App::route(
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
   include_in_schema? : Bool = true,
+  validate? : Bool = true,
 ) -> Unit {
   self.routes.push({
     verb,
@@ -208,6 +261,7 @@ pub fn App::route(
     endpoint,
     security,
     include_in_schema,
+    validate,
   })
 }
 
@@ -226,6 +280,7 @@ pub fn App::route_bg(
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
   include_in_schema? : Bool = true,
+  validate? : Bool = true,
 ) -> Unit {
   self.routes.push({
     verb,
@@ -237,6 +292,7 @@ pub fn App::route_bg(
     endpoint,
     security,
     include_in_schema,
+    validate,
   })
 }
 
@@ -253,6 +309,7 @@ pub fn App::get(
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
   include_in_schema? : Bool = true,
+  validate? : Bool = true,
 ) -> Unit {
   self.route(
     Get,
@@ -264,6 +321,7 @@ pub fn App::get(
     endpoint~,
     security~,
     include_in_schema~,
+    validate~,
   )
 }
 
@@ -282,8 +340,8 @@ pub fn App::enable_docs(
   docs_url? : String? = Some("/docs"),
   redoc_url? : String? = Some("/redoc"),
   version? : OpenApiVersion = OpenApi31,
-  title? : String = "moonapi",
 ) -> Unit {
+  let title = self.info.title
   if openapi_url is Some(url) {
     self.get(
       url,
@@ -324,6 +382,7 @@ pub fn App::post(
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
   include_in_schema? : Bool = true,
+  validate? : Bool = true,
 ) -> Unit {
   self.route(
     Post,
@@ -335,6 +394,7 @@ pub fn App::post(
     endpoint~,
     security~,
     include_in_schema~,
+    validate~,
   )
 }
 
@@ -350,6 +410,7 @@ pub fn App::put(
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
   include_in_schema? : Bool = true,
+  validate? : Bool = true,
 ) -> Unit {
   self.route(
     Put,
@@ -361,6 +422,7 @@ pub fn App::put(
     endpoint~,
     security~,
     include_in_schema~,
+    validate~,
   )
 }
 
@@ -376,6 +438,7 @@ pub fn App::patch(
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
   include_in_schema? : Bool = true,
+  validate? : Bool = true,
 ) -> Unit {
   self.route(
     Patch,
@@ -387,6 +450,7 @@ pub fn App::patch(
     endpoint~,
     security~,
     include_in_schema~,
+    validate~,
   )
 }
 
@@ -402,6 +466,7 @@ pub fn App::delete(
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
   include_in_schema? : Bool = true,
+  validate? : Bool = true,
 ) -> Unit {
   self.route(
     Delete,
@@ -413,6 +478,7 @@ pub fn App::delete(
     endpoint~,
     security~,
     include_in_schema~,
+    validate~,
   )
 }
 
@@ -608,21 +674,38 @@ fn App::route_and_dispatch(
   bg : BackgroundTasks,
 ) -> @moonasgi.Response {
   let verb = parse_method(request.http_method)
-  let mut method_mismatch = false
+  let allowed : Array[String] = []
   for route in self.routes {
     match match_path(route.path, request.path) {
       Some(params) =>
-        if route.verb == verb {
+        // A GET route answers HEAD too, with the body dropped — the same rule
+        // Starlette applies, and what a client probing a resource expects.
+        if verb is Some(v) &&
+          (route.verb == v || (v is Head && route.verb is Get)) {
           let ctx : Context = { request, params, }
           match self.enforce_security(ctx, route.security) {
             Some(denied) => return self.apply_status(ctx, denied)
             None => ()
           }
-          return (route.run)(ctx, bg) catch {
+          if route.validate && route.endpoint is Some(ep) {
+            let errs = ep.validate(ctx)
+            if errs.length() > 0 {
+              return self.apply_status(ctx, unprocessable(errs))
+            }
+          }
+          let resp = (route.run)(ctx, bg) catch {
             e => self.dispatch_exception(ctx, e)
           }
+          return if verb is Some(Head) && route.verb is Get {
+            @moonasgi.Response::new(resp.status, resp.headers, b"")
+          } else {
+            resp
+          }
         } else {
-          method_mismatch = true
+          allowed.push(method_name(route.verb))
+          if route.verb is Get {
+            allowed.push("HEAD")
+          }
         }
       None => ()
     }
@@ -646,11 +729,33 @@ fn App::route_and_dispatch(
     }
   }
   let ctx : Context = { request, params: Map([]), }
-  if method_mismatch {
-    self.apply_status(ctx, text(405, "Method Not Allowed"))
+  if allowed.length() > 0 {
+    // RFC 9110 §15.5.6 requires the Allow header on a 405; a client that probes
+    // a resource reads it rather than guessing.
+    self.apply_status(
+      ctx,
+      http_exception_response(405, "Method Not Allowed".to_json(), [
+        ("allow", dedupe(allowed).join(", ")),
+      ]),
+    )
   } else {
-    self.apply_status(ctx, text(404, "Not Found"))
+    self.apply_status(
+      ctx,
+      http_exception_response(404, "Not Found".to_json(), []),
+    )
   }
+}
+
+///|
+/// The distinct entries of `names`, in first-seen order.
+fn dedupe(names : Array[String]) -> Array[String] {
+  let out : Array[String] = []
+  for n in names {
+    if !out.contains(n) {
+      out.push(n)
+    }
+  }
+  out
 }
 
 ///|
