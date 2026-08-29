@@ -98,8 +98,21 @@ SECTIONS = [
      "oauth2_app wires the security layer end to end: a /token endpoint that issues "
      "a scoped JWT and two protected routes, one requiring the items scope - "
      "FastAPI's security tutorial in explicit MoonBit form."),
+    ("constraints", "constraint.mbt", "Parameter constraints",
+     "The declared bounds a parameter carries — min/max, length, pattern, enum — "
+     "checked on the way in and emitted into the schema on the way out, so the "
+     "document and the enforcement cannot drift apart."),
+    ("security-extractors", "security_extractors.mbt", "Security extractors",
+     "Pulling the credential out of a request for each scheme: the Authorization "
+     "header, an API key in a header, query or cookie, and HTTP basic."),
+    ("signatures", ("rsa.mbt", "ecdsa.mbt", "ed25519.mbt", "sha512.mbt"), "Signature primitives",
+     "The RSA PKCS#1 v1.5, ECDSA P-256 and Ed25519 sign/verify primitives JWT rests "
+     "on, with the SHA-512 they need — written here so token verification needs no "
+     "native binding and runs on every backend."),
+    ("di-demo", "di_demo.mbt", "Dependency injection worked example",
+     "A worked wiring of the container: providers, scopes and overrides, kept in "
+     "the package so it is compiled and tested rather than only described."),
 ]
-
 KIND = {"struct": "struct", "enum": "enum", "fn": "fn", "type": "type", "let": "let"}
 
 
@@ -306,7 +319,8 @@ def main():
     for sid, rel, title, desc in SECTIONS:
         body.append('<section class="pkg" id="%s"><h2><span class="at">§</span>%s</h2>'
                     '<p class="pdesc">%s</p>' % (sid, title, esc(desc)))
-        for kind, sig, doc in parse(ROOT / rel):
+        files = rel if isinstance(rel, tuple) else (rel,)
+        for kind, sig, doc in [it for f in files for it in parse(ROOT / f)]:
             total += 1
             body.append('<div class="item" data-k="%s"><span class="kind">%s</span>'
                         '<pre class="sig">%s</pre>%s</div>'
