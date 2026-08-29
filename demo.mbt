@@ -20,6 +20,7 @@ pub fn Address::schema() -> Schema {
 }
 
 ///|
+/// `Address`'s schema, so a route declaring it as a body or response documents itself.
 pub impl ToSchema for Address with fn to_schema(_self) {
   Address::schema()
 }
@@ -43,6 +44,7 @@ pub fn NewUser::schema() -> Schema {
 }
 
 ///|
+/// `NewUser`'s schema, so a route declaring it as a body or response documents itself.
 pub impl ToSchema for NewUser with fn to_schema(_self) {
   NewUser::schema()
 }
@@ -70,6 +72,7 @@ pub fn User::schema() -> Schema {
 }
 
 ///|
+/// `User`'s schema, so a route declaring it as a body or response documents itself.
 pub impl ToSchema for User with fn to_schema(_self) {
   User::schema()
 }

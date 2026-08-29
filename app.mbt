@@ -241,6 +241,8 @@ pub fn App::route_bg(
 }
 
 ///|
+/// Register a `GET` route. A shorthand for `route(Get, ...)` carrying the same
+/// documentation and security arguments.
 pub fn App::get(
   self : App,
   path : String,
@@ -310,6 +312,8 @@ pub fn App::enable_docs(
 }
 
 ///|
+/// Register a `POST` route — the verb that carries a request body, so this is the
+/// one most often given an `endpoint` describing that body.
 pub fn App::post(
   self : App,
   path : String,
@@ -335,6 +339,7 @@ pub fn App::post(
 }
 
 ///|
+/// Register a `PUT` route: replace the addressed resource wholesale.
 pub fn App::put(
   self : App,
   path : String,
@@ -360,6 +365,7 @@ pub fn App::put(
 }
 
 ///|
+/// Register a `PATCH` route: change part of the addressed resource.
 pub fn App::patch(
   self : App,
   path : String,
@@ -385,6 +391,7 @@ pub fn App::patch(
 }
 
 ///|
+/// Register a `DELETE` route.
 pub fn App::delete(
   self : App,
   path : String,

@@ -79,6 +79,11 @@ pub(all) struct Server {
 }
 
 ///|
+/// Build the app's OpenAPI document as a `Json` value, walking the registered
+/// routes — this app's and every mounted sub-app's, each under its prefix — into
+/// paths, methods and operations. `version` picks the dialect: Swagger 2.0,
+/// OpenAPI 3.0.3 or 3.1.0 off the identical routes. Routes registered with
+/// `include_in_schema=false` are left out.
 pub fn App::openapi(
   self : App,
   version? : OpenApiVersion = OpenApi31,
