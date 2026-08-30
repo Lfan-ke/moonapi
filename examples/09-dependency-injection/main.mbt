@@ -28,7 +28,7 @@ fn Dep::show(self : Dep) -> String {
 ///
 ///     moon run examples/09-dependency-injection
 #coverage.skip
-fn main {
+fn main raise {
   let opens : Array[Int] = [0]
   let c : @moonapi.Container[Dep] = @moonapi.Container::new()
   c.provide("config", () => Cfg("prod-dsn")) |> ignore
@@ -45,7 +45,7 @@ fn main {
       println("  [open]  conn -> \{dsn}")
       Conn(dsn)
     },
-    teardown=_v => println("  [close] conn"),
+    teardown=(_v, _e) => println("  [close] conn"),
   )
   |> ignore
   // A repository that depends on the connection.

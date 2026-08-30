@@ -107,7 +107,7 @@ test "DI: a dependency resolves a sub-dependency through the scope, LIFO teardow
       log.push("build prefix")
       Greeting("Hi")
     },
-    teardown=_v => log.push("td prefix"),
+    teardown=(_v, _e) => log.push("td prefix"),
   )
   |> ignore
   c.provide_using(
@@ -120,7 +120,7 @@ test "DI: a dependency resolves a sub-dependency through the scope, LIFO teardow
       }
       Greeting(p + ", there")
     },
-    teardown=_v => log.push("td full"),
+    teardown=(_v, _e) => log.push("td full"),
   )
   |> ignore
   let scope = c.open_scope()
@@ -181,7 +181,7 @@ test "DI: yield-style teardown runs after the handler, LIFO" {
       log.push("setup a")
       Greeting("a")
     },
-    teardown=_v => log.push("teardown a"),
+    teardown=(_v, _e) => log.push("teardown a"),
   )
   |> ignore
   c.provide(
@@ -190,7 +190,7 @@ test "DI: yield-style teardown runs after the handler, LIFO" {
       log.push("setup b")
       Greeting("b")
     },
-    teardown=_v => log.push("teardown b"),
+    teardown=(_v, _e) => log.push("teardown b"),
   )
   |> ignore
   let resp = c.run(scope => {
@@ -223,4 +223,156 @@ test "greet route: dependency + validated body end to end, with override" {
   let bad = app.handle(mkreq_full("POST", "/greet", body=@utf8.encode("{}")))
   assert_eq(bad.status, 422)
   assert_eq(json_str(detail0(bad), "type"), "missing")
+}
+
+///|
+/// What a teardown saw: "commit" on a clean request, "rollback" on a failed one
+/// — the distinction a FastAPI `yield` dependency draws by wrapping its `yield`
+/// in a `try`.
+fn outcome_word(failure : Error?) -> String {
+  if failure is Some(_) {
+    "rollback"
+  } else {
+    "commit"
+  }
+}
+
+///|
+test "DI: run hands the handler's error to the teardowns, then re-raises" {
+  let log : Array[String] = []
+  let c : Container[Dep] = Container::new()
+  c.provide("tx", () => Greeting("tx"), teardown=(_v, e) => {
+    log.push(outcome_word(e))
+  })
+  |> ignore
+  let outcome : Result[@moonasgi.Response, Error] = Ok(
+    c.run(scope => {
+      let _ = scope.get("tx")
+      raise http_error(500, "boom")
+    }),
+  ) catch {
+    e => Err(e)
+  }
+  // The error is not swallowed on its way out...
+  assert_eq(outcome is Err(_), true)
+  // ...and the teardown ran, knowing the request failed.
+  assert_eq(log == ["rollback"], true)
+}
+
+///|
+test "route deps: a declared dependency is resolved before the handler and torn down after" {
+  let log : Array[String] = []
+  let c : Container[Dep] = Container::new()
+  c.provide(
+    "conn",
+    () => {
+      log.push("open")
+      Greeting("db")
+    },
+    teardown=(_v, _e) => log.push("close"),
+  )
+  |> ignore
+  let app = App::new()
+  app.depends(c.erase())
+  app.get(
+    "/items",
+    _ctx => {
+      log.push("handler")
+      text(200, "items")
+    },
+    dependencies=["conn"],
+  )
+  assert_eq(app.handle(mkreq("GET", "/items")).status, 200)
+  assert_eq(log == ["open", "handler", "close"], true)
+}
+
+///|
+test "route deps: teardown runs when the handler raises, and sees the failure" {
+  let log : Array[String] = []
+  let c : Container[Dep] = Container::new()
+  c.provide("tx", () => Greeting("tx"), teardown=(_v, e) => {
+    log.push(outcome_word(e))
+  })
+  |> ignore
+  let app = App::new()
+  app.depends(c.erase())
+  app.get("/boom", _ctx => raise http_error(418, "no tea"), dependencies=["tx"])
+  app.get("/fine", _ctx => text(200, "ok"), dependencies=["tx"])
+  // The raised error still becomes its mapped response...
+  assert_eq(app.handle(mkreq("GET", "/boom")).status, 418)
+  assert_eq(app.handle(mkreq("GET", "/fine")).status, 200)
+  // ...and the two requests tore down differently, which is the whole point of
+  // handing the failure to the teardown.
+  assert_eq(log == ["rollback", "commit"], true)
+}
+
+///|
+test "route deps: dependencies are LIFO within one request, and per request" {
+  let log : Array[String] = []
+  let c : Container[Dep] = Container::new()
+  c.provide("a", () => Greeting("a"), teardown=(_v, _e) => log.push("td a"))
+  |> ignore
+  c.provide("b", () => Greeting("b"), teardown=(_v, _e) => log.push("td b"))
+  |> ignore
+  let app = App::new()
+  app.depends(c.erase())
+  app.get("/x", _ctx => text(200, "x"), dependencies=["a", "b"])
+  let _ = app.handle(mkreq("GET", "/x"))
+  let _ = app.handle(mkreq("GET", "/x"))
+  // Each request opened its own scope: two full setup/teardown cycles, the
+  // second not served from the first's cache.
+  assert_eq(log == ["td b", "td a", "td b", "td a"], true)
+}
+
+///|
+test "route deps: an unprovidable key is a 500 and still releases what was built" {
+  let log : Array[String] = []
+  let c : Container[Dep] = Container::new()
+  c.provide("conn", () => Greeting("db"), teardown=(_v, _e) => log.push("close"))
+  |> ignore
+  let app = App::new()
+  app.depends(c.erase())
+  app.get(
+    "/items",
+    _ctx => {
+      log.push("handler")
+      text(200, "items")
+    },
+    dependencies=["conn", "nope"],
+  )
+  assert_eq(app.handle(mkreq("GET", "/items")).status, 500)
+  // The handler never ran, and the dependency built before the gap was released.
+  assert_eq(log == ["close"], true)
+}
+
+///|
+test "route deps: a route that declares one with no container at all is a 500" {
+  let app = App::new()
+  app.get("/items", _ctx => text(200, "items"), dependencies=["conn"])
+  assert_eq(app.handle(mkreq("GET", "/items")).status, 500)
+  // A route declaring none is unaffected — no container, no scope, no error.
+  app.get("/free", _ctx => text(200, "free"))
+  assert_eq(app.handle(mkreq("GET", "/free")).status, 200)
+}
+
+///|
+test "route deps: a router's group dependencies reach every route it carries" {
+  let log : Array[String] = []
+  let c : Container[Dep] = Container::new()
+  c.provide("audit", () => {
+    log.push("audit")
+    Greeting("audit")
+  })
+  |> ignore
+  let app = App::new()
+  app.depends(c.erase())
+  let r = Router::new()
+  r.get("/one", _ctx => text(200, "one"))
+  r.get("/two", _ctx => text(200, "two"), dependencies=["own"])
+  app.include_router(r, prefix="/g", dependencies=["audit"])
+  assert_eq(app.handle(mkreq("GET", "/g/one")).status, 200)
+  // The route's own key is unprovided, but the group's ran first — a group-wide
+  // dependency is not something a route can drop by adding one of its own.
+  assert_eq(app.handle(mkreq("GET", "/g/two")).status, 500)
+  assert_eq(log == ["audit", "audit"], true)
 }

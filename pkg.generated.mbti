@@ -296,31 +296,50 @@ pub(all) struct ApiInfo {
 }
 pub fn ApiInfo::new() -> Self
 
+pub struct ApiKey {
+  loc : ApiKeyIn
+  name : String
+  verify : (String) -> Bool
+}
+pub fn ApiKey::cookie(String, (String) -> Bool) -> Self
+pub fn ApiKey::header(String, (String) -> Bool) -> Self
+pub fn ApiKey::query(String, (String) -> Bool) -> Self
+pub fn ApiKey::read(Self, Context) -> String?
+pub fn ApiKey::scheme(Self) -> SecurityScheme
+
+pub(all) enum ApiKeyIn {
+  KeyHeader
+  KeyQuery
+  KeyCookie
+} derive(Eq)
+
 pub struct App {
   routes : Array[Route]
   ws_routes : Array[WsRoute]
   middlewares : Array[((@moonasgi.Request) -> @moonasgi.Response) -> (@moonasgi.Request) -> @moonasgi.Response]
   exception_handlers : Array[(Context, Error) -> @moonasgi.Response?]
-  security_schemes : Array[(String, SecurityScheme)]
-  enforcers : Map[String, (Context, Array[String], Int64) -> Result[AuthenticatedUser, @moonasgi.Response]]
+  security_schemes : Array[DeclaredScheme]
+  enforcers : Map[String, (Context, SecurityScopes, Int64) -> Result[AuthenticatedUser, @moonasgi.Response]]
   status_handlers : Map[Int, (Context) -> @moonasgi.Response]
   mounts : Array[(String, Mount)]
   startup_hooks : Array[() -> Unit raise]
   shutdown_hooks : Array[() -> Unit raise]
   mut info : ApiInfo
   mut clock : () -> Int64
+  mut deps : Deps?
 }
-pub fn App::add_security_scheme(Self, String, SecurityScheme) -> Unit
+pub fn App::add_security_scheme(Self, String, SecurityScheme, description? : String) -> Unit
 pub fn App::add_status_handler(Self, Int, (Context) -> @moonasgi.Response) -> Unit
-pub fn App::delete(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn App::delete(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], dependencies? : Array[String], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn App::depends(Self, Deps) -> Unit
 pub fn App::describe(Self, title? : String, api_version? : String, description? : String, terms_of_service? : String, contact? : Contact?, license? : License?, servers? : Array[Server]) -> Unit
 pub fn App::enable_docs(Self, openapi_url? : String?, docs_url? : String?, redoc_url? : String?, version? : OpenApiVersion) -> Unit
 pub fn App::exception_handler(Self, (Context, Error) -> @moonasgi.Response?) -> Unit
-pub fn App::get(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn App::get(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], dependencies? : Array[String], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
 pub fn App::handle(Self, @moonasgi.Request) -> @moonasgi.Response
 pub fn App::handle_with_background(Self, @moonasgi.Request) -> (@moonasgi.Response, BackgroundTasks)
 pub fn App::handle_with_stream(Self, @moonasgi.Request) -> (@moonasgi.StreamingResponse, BackgroundTasks)
-pub fn App::include_router(Self, Router, prefix? : String, tags? : Array[String], security? : Array[SecurityRequirement], responses? : Array[ResponseSpec], deprecated? : Bool, include_in_schema? : Bool) -> Unit
+pub fn App::include_router(Self, Router, prefix? : String, tags? : Array[String], security? : Array[SecurityRequirement], dependencies? : Array[String], responses? : Array[ResponseSpec], deprecated? : Bool, include_in_schema? : Bool) -> Unit
 pub fn App::lifespan_handler(Self) -> @moonasgi.LifespanHandler
 pub fn App::middleware(Self, ((@moonasgi.Request) -> @moonasgi.Response) -> (@moonasgi.Request) -> @moonasgi.Response) -> Unit
 pub fn App::mount(Self, String, Self) -> Unit
@@ -330,15 +349,21 @@ pub fn App::on_shutdown(Self, () -> Unit raise) -> Unit
 pub fn App::on_startup(Self, () -> Unit raise) -> Unit
 pub fn App::openapi(Self, version? : OpenApiVersion, title? : String, api_version? : String, description? : String, terms_of_service? : String, contact? : Contact?, license? : License?, servers? : Array[Server]) -> Json
 pub fn App::openapi_json(Self, version? : OpenApiVersion) -> String
-pub fn App::patch(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
-pub fn App::post(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
-pub fn App::put(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
-pub fn App::route(Self, Method, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
-pub fn App::route_bg(Self, Method, String, (Context, BackgroundTasks) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
-pub fn App::route_stream(Self, Method, String, (Context) -> @moonasgi.StreamingResponse raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
-pub fn App::secure_oauth2(Self, String, OAuth2PasswordBearer, scopes? : Array[(String, String)]) -> Unit
+pub fn App::patch(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], dependencies? : Array[String], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn App::post(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], dependencies? : Array[String], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn App::put(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], dependencies? : Array[String], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn App::route(Self, Method, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], dependencies? : Array[String], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn App::route_bg(Self, Method, String, (Context, BackgroundTasks) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], dependencies? : Array[String], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn App::route_stream(Self, Method, String, (Context) -> @moonasgi.StreamingResponse raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], dependencies? : Array[String], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn App::secure_api_key(Self, String, ApiKey, description? : String, auto_error? : Bool) -> Unit
+pub fn App::secure_basic(Self, String, BasicAuth, description? : String, auto_error? : Bool) -> Unit
+pub fn App::secure_bearer(Self, String, String, bearer_format? : String, description? : String, auto_error? : Bool) -> Unit
+pub fn App::secure_digest(Self, String, DigestAuth, description? : String, auto_error? : Bool) -> Unit
+pub fn App::secure_oauth2(Self, String, OAuth2PasswordBearer, scopes? : Array[(String, String)], description? : String, auto_error? : Bool) -> Unit
+pub fn App::secure_oauth2_code(Self, String, OAuth2CodeBearer, scopes? : Array[(String, String)], description? : String, auto_error? : Bool) -> Unit
+pub fn App::secure_openid(Self, String, String, String, description? : String, auto_error? : Bool) -> Unit
 pub fn App::set_clock(Self, () -> Int64) -> Unit
-pub fn App::stream(Self, String, (Context) -> @moonasgi.StreamingResponse raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn App::stream(Self, String, (Context) -> @moonasgi.StreamingResponse raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], dependencies? : Array[String], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
 pub fn App::to_asgi(Self) -> async (@moonasgi.Scope, async () -> @moonasgi.Event, async (@moonasgi.Event) -> Unit) -> Unit
 pub fn App::url_for(Self, String, params? : Map[String, String]) -> String?
 pub fn App::websocket(Self, String, (WebSocket) -> Unit) -> Unit
@@ -357,6 +382,13 @@ pub fn BackgroundTasks::add_task(Self, () -> Unit) -> Unit
 pub fn BackgroundTasks::len(Self) -> Int
 pub fn BackgroundTasks::new() -> Self
 pub fn BackgroundTasks::run(Self) -> Unit
+
+pub struct BasicAuth {
+  realm : String
+  verify : (HttpBasicCredentials) -> Bool
+}
+pub fn BasicAuth::challenge(Self) -> String
+pub fn BasicAuth::new((HttpBasicCredentials) -> Bool, realm? : String) -> Self
 
 pub(all) enum Constraint {
   Minimum(Double)
@@ -383,12 +415,13 @@ pub(all) struct Container[V] {
 }
 pub fn[V] Container::clear_override(Self[V], String) -> Unit
 pub fn[V] Container::clear_overrides(Self[V]) -> Unit
+pub fn[V] Container::erase(Self[V]) -> Deps
 pub fn[V] Container::new() -> Self[V]
 pub fn[V] Container::open_scope(Self[V]) -> Scope[V]
-pub fn[V] Container::override_(Self[V], String, () -> V, teardown? : (V) -> Unit) -> Self[V]
-pub fn[V] Container::provide(Self[V], String, () -> V, teardown? : (V) -> Unit) -> Self[V]
-pub fn[V] Container::provide_using(Self[V], String, (Scope[V]) -> V, teardown? : (V) -> Unit) -> Self[V]
-pub fn[V] Container::run(Self[V], (Scope[V]) -> @moonasgi.Response) -> @moonasgi.Response
+pub fn[V] Container::override_(Self[V], String, () -> V, teardown? : (V, Error?) -> Unit) -> Self[V]
+pub fn[V] Container::provide(Self[V], String, () -> V, teardown? : (V, Error?) -> Unit) -> Self[V]
+pub fn[V] Container::provide_using(Self[V], String, (Scope[V]) -> V, teardown? : (V, Error?) -> Unit) -> Self[V]
+pub fn[V] Container::run(Self[V], (Scope[V]) -> @moonasgi.Response raise) -> @moonasgi.Response raise
 
 pub(all) struct Context {
   request : @moonasgi.Request
@@ -402,6 +435,7 @@ pub fn[T : @json.FromJson] Context::body(Self) -> T?
 pub fn Context::body_json(Self) -> Json?
 pub fn[T : @json.FromJson] Context::body_validated(Self, Schema) -> Result[T, Array[ValidationError]]
 pub fn Context::cookie(Self, String) -> String?
+pub fn Context::digest_credentials(Self) -> String?
 pub fn Context::form(Self, limits? : FormLimits) -> FormData?
 pub fn Context::http_basic(Self) -> HttpBasicCredentials?
 pub fn Context::json_field(Self, String) -> Json?
@@ -421,9 +455,24 @@ pub(all) struct CorsConfig {
   max_age : Int
 }
 
+type DeclaredScheme
+
 pub(all) enum Dep {
   Greeting(String)
 } derive(Eq)
+
+pub struct Deps {
+  open : () -> DepsScope
+}
+
+type DepsScope
+
+pub struct DigestAuth {
+  realm : String
+  verify : (String) -> Bool
+}
+pub fn DigestAuth::challenge(Self) -> String
+pub fn DigestAuth::new((String) -> Bool, realm? : String) -> Self
 
 pub(all) struct EcdsaPrivateKey {
   d : @bigint.BigInt
@@ -463,8 +512,10 @@ pub(all) struct Field {
   required : Bool
   description : String
   constraints : Array[Constraint]
+  default : Json?
 } derive(Eq)
-pub fn Field::new(String, Schema, required? : Bool, description? : String, constraints? : Array[Constraint]) -> Self
+pub fn Field::is_required(Self) -> Bool
+pub fn Field::new(String, Schema, required? : Bool, description? : String, constraints? : Array[Constraint], default? : Json) -> Self
 
 pub(all) struct FormData {
   fields : Array[FormField]
@@ -520,6 +571,15 @@ pub(all) struct NewUser {
 pub fn NewUser::schema() -> Schema
 pub impl ToSchema for NewUser
 
+pub struct OAuth2CodeBearer {
+  authorization_url : String
+  token_url : String
+  refresh_url : String
+  secret : String
+}
+pub fn OAuth2CodeBearer::new(String, String, String, refresh_url? : String) -> Self
+pub fn OAuth2CodeBearer::scheme(Self, scopes? : Array[(String, String)]) -> SecurityScheme
+
 pub(all) struct OAuth2PasswordBearer {
   token_url : String
   secret : String
@@ -555,8 +615,13 @@ pub(all) struct Param {
   schema : Schema
   required : Bool
   description : String
+  constraints : Array[Constraint]
+  default : Json?
+  alias_ : String
 } derive(Eq)
-pub fn Param::new(String, ParamLoc, schema? : Schema, required? : Bool, description? : String) -> Self
+pub fn Param::is_required(Self) -> Bool
+pub fn Param::key(Self) -> String
+pub fn Param::new(String, ParamLoc, schema? : Schema, required? : Bool, description? : String, constraints? : Array[Constraint], default? : Json, alias_? : String) -> Self
 
 pub(all) enum ParamLoc {
   InPath
@@ -567,10 +632,10 @@ pub(all) enum ParamLoc {
 
 pub(all) struct Provider[V] {
   factory : (Scope[V]) -> V
-  teardown : (V) -> Unit
+  teardown : (V, Error?) -> Unit
 }
-pub fn[V] Provider::new(() -> V, teardown? : (V) -> Unit) -> Self[V]
-pub fn[V] Provider::scoped((Scope[V]) -> V, teardown? : (V) -> Unit) -> Self[V]
+pub fn[V] Provider::new(() -> V, teardown? : (V, Error?) -> Unit) -> Self[V]
+pub fn[V] Provider::scoped((Scope[V]) -> V, teardown? : (V, Error?) -> Unit) -> Self[V]
 
 pub(all) struct ResponseSpec {
   status : Int
@@ -585,15 +650,15 @@ pub struct Router {
   routes : Array[Route]
   ws_routes : Array[WsRoute]
 }
-pub fn Router::delete(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
-pub fn Router::get(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn Router::delete(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], dependencies? : Array[String], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn Router::get(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], dependencies? : Array[String], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
 pub fn Router::new() -> Self
-pub fn Router::patch(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
-pub fn Router::post(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
-pub fn Router::put(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
-pub fn Router::route(Self, Method, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
-pub fn Router::route_bg(Self, Method, String, (Context, BackgroundTasks) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
-pub fn Router::stream(Self, String, (Context) -> @moonasgi.StreamingResponse raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn Router::patch(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], dependencies? : Array[String], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn Router::post(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], dependencies? : Array[String], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn Router::put(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], dependencies? : Array[String], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn Router::route(Self, Method, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], dependencies? : Array[String], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn Router::route_bg(Self, Method, String, (Context, BackgroundTasks) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], dependencies? : Array[String], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn Router::stream(Self, String, (Context) -> @moonasgi.StreamingResponse raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], dependencies? : Array[String], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
 pub fn Router::websocket(Self, String, (WebSocket) -> Unit) -> Unit
 
 pub(all) struct RsaPrivateKey {
@@ -625,17 +690,25 @@ pub(all) enum Schema {
   SArray(Schema)
   SObject(ObjectSchema)
   SEnum(Schema, Array[Json])
+  SNullable(Schema)
+  SMap(Schema)
+  SAny
+  SFormat(Schema, String)
 } derive(Eq)
 pub fn Schema::array(Self) -> Self
+pub fn Schema::binary() -> Self
+pub fn Schema::format(Self, String) -> Self
+pub fn Schema::map(Self) -> Self
+pub fn Schema::nullable(Self) -> Self
 pub fn Schema::object(String, Array[Field]) -> Self
 
 pub struct Scope[V] {
   container : Container[V]
   cache : Map[String, V]
   building : Map[String, Bool]
-  teardowns : Array[() -> Unit]
+  teardowns : Array[(Error?) -> Unit]
 }
-pub fn[V] Scope::close(Self[V]) -> Unit
+pub fn[V] Scope::close(Self[V], failure? : Error) -> Unit
 pub fn[V] Scope::get(Self[V], String) -> V?
 
 pub(all) struct SecurityRequirement {
@@ -646,12 +719,23 @@ pub fn SecurityRequirement::new(String, scopes? : Array[String]) -> Self
 
 pub(all) enum SecurityScheme {
   OAuth2Password(token_url~ : String, scopes~ : Array[(String, String)])
+  OAuth2Code(authorization_url~ : String, token_url~ : String, refresh_url~ : String, scopes~ : Array[(String, String)])
   HttpBearer(bearer_format~ : String)
   ApiKeyHeader(name~ : String)
   ApiKeyQuery(name~ : String)
   ApiKeyCookie(name~ : String)
   HttpBasic
+  HttpDigest
+  OpenIdConnect(url~ : String)
 }
+
+pub struct SecurityScopes {
+  scopes : Array[String]
+}
+pub fn SecurityScopes::challenge(Self) -> String
+pub fn SecurityScopes::list(Self) -> Array[String]
+pub fn SecurityScopes::new(scopes? : Array[String]) -> Self
+pub fn SecurityScopes::scope_str(Self) -> String
 
 pub(all) struct Server {
   url : String

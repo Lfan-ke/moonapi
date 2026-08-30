@@ -325,7 +325,7 @@ pub fn validate_schema(
       for f in os.fields {
         match m.get(f.name) {
           None =>
-            if f.required {
+            if f.is_required() {
               errs.push(ValidationError::missing(loc_push(loc, f.name)))
             }
           Some(v) => {
@@ -340,6 +340,25 @@ pub fn validate_schema(
           loc, "model_type", "Input should be a valid object",
         ),
       )
+    // An explicit null satisfies the wrapper; anything else has to satisfy what
+    // is wrapped, so `Optional[int]` still rejects a string.
+    (SNullable(_), Null) => ()
+    (SNullable(inner), v) => validate_schema(inner, v, loc, errs)
+    (SMap(value), Object(m)) =>
+      for k, v in m {
+        validate_schema(value, v, loc_push(loc, k), errs)
+      }
+    (SMap(_), _) =>
+      errs.push(
+        ValidationError::type_error(
+          loc, "dict_type", "Input should be a valid dictionary",
+        ),
+      )
+    // A format refines what a value *means*, never what it is, so validation
+    // checks the base — which is what pydantic does for a format it has no
+    // validator for.
+    (SFormat(base, _), v) => validate_schema(base, v, loc, errs)
+    (SAny, _) => ()
   }
 }
 
@@ -388,6 +407,10 @@ fn validate_scalar_str(
           ),
         )
       }
+    // A wrapper does not change what the text has to parse as: a supplied value
+    // for a nullable or formatted parameter is still checked against the base.
+    SNullable(inner) => validate_scalar_str(inner, v, loc, errs)
+    SFormat(base, _) => validate_scalar_str(base, v, loc, errs)
     _ => ()
   }
 }
@@ -410,6 +433,8 @@ fn scalar_json(base : Schema, v : String) -> Json {
         "false" | "False" | "0" => false.to_json()
         _ => v.to_json()
       }
+    SNullable(inner) => scalar_json(inner, v)
+    SFormat(base, _) => scalar_json(base, v)
     _ => v.to_json()
   }
 }
@@ -463,19 +488,27 @@ pub fn Endpoint::validate(
 ) -> Array[ValidationError] {
   let errs : Array[ValidationError] = []
   for p in self.params {
+    // The wire name, which is the alias when there is one — what the client
+    // sent, what the document promised, and what an error should point at.
+    let key = p.key()
     let raw = match p.loc {
-      InPath => ctx.param(p.name)
-      InQuery => ctx.query(p.name)
-      InHeader => ctx.request.header(p.name)
-      InCookie => ctx.cookie(p.name)
+      InPath => ctx.param(key)
+      InQuery => ctx.query(key)
+      InHeader => ctx.request.header(key)
+      InCookie => ctx.cookie(key)
     }
     match raw {
       None =>
-        if p.required {
-          errs.push(ValidationError::missing([loc_str(p.loc), p.name]))
+        if p.is_required() {
+          errs.push(ValidationError::missing([loc_str(p.loc), key]))
         }
-      Some(v) =>
-        validate_scalar_str(p.schema, v, [loc_str(p.loc), p.name], errs)
+      Some(v) => {
+        let loc = [loc_str(p.loc), key]
+        validate_scalar_str(p.schema, v, loc, errs)
+        // Constraints see the value as its declared scalar, so a `ge` on an
+        // integer parameter compares numbers rather than text.
+        check_constraints(scalar_json(p.schema, v), p.constraints, loc, errs)
+      }
     }
   }
   match self.request_body {

@@ -127,6 +127,10 @@ struct Route {
   openapi_extra : Json?
   endpoint : Endpoint?
   security : Array[SecurityRequirement]
+  // Provider keys resolved through the app's container before the handler runs,
+  // and torn down after it (← FastAPI's `dependencies=[Depends(...)]`, whose
+  // values the handler never sees).
+  dependencies : Array[String]
   // FastAPI's `include_in_schema`: a route that serves the documentation itself has
   // no business appearing in the document it serves.
   include_in_schema : Bool
@@ -156,7 +160,7 @@ pub struct App {
   ws_routes : Array[WsRoute]
   middlewares : Array[@moonasgi.Middleware]
   exception_handlers : Array[ExceptionHandler]
-  security_schemes : Array[(String, SecurityScheme)]
+  security_schemes : Array[DeclaredScheme]
   enforcers : Map[String, SecurityEnforcer]
   status_handlers : Map[Int, (Context) -> @moonasgi.Response]
   mounts : Array[(String, Mount)]
@@ -169,6 +173,8 @@ pub struct App {
   // `App::openapi` describes.
   mut info : ApiInfo
   mut clock : () -> Int64
+  // The container a route's declared `dependencies` are resolved through.
+  mut deps : Deps?
 }
 
 ///|
@@ -189,7 +195,23 @@ pub fn App::new() -> App {
     shutdown_hooks: [],
     info: ApiInfo::new(),
     clock: () => 0L,
+    deps: None,
   }
+}
+
+///|
+/// Give the app the dependency container its routes resolve their declared
+/// `dependencies` through (← FastAPI's `Depends` wiring, which a route names and
+/// the application supplies). The container's value type is erased on the way
+/// in, because a route-level dependency runs for its effect and its value is
+/// never handed to the handler — the same thing FastAPI's `dependencies=[...]`
+/// does with the values it builds.
+///
+/// A route that declares a dependency the container does not provide is answered
+/// with a `500`: the setup the route promised did not happen, and running the
+/// handler as though it had is worse than saying so.
+pub fn App::depends(self : App, deps : Deps) -> Unit {
+  self.deps = Some(deps)
 }
 
 ///|
@@ -265,12 +287,19 @@ pub fn App::exception_handler(self : App, h : ExceptionHandler) -> Unit {
 /// Declare a security scheme under `name`, surfaced in the emitted OpenAPI
 /// document (`components/securitySchemes` in 3.x, `securityDefinitions` in
 /// Swagger 2.0) so the generated spec describes how to authenticate.
+/// `description` is the prose shown beside it in the documentation UI.
+///
+/// This declares only. A route naming this scheme in its `security` is
+/// documented as protected and left unguarded, exactly as a FastAPI scheme that
+/// no path operation depends on is — the `secure_*` functions are the ones that
+/// wire an enforcer.
 pub fn App::add_security_scheme(
   self : App,
   name : String,
   scheme : SecurityScheme,
+  description? : String = "",
 ) -> Unit {
-  self.security_schemes.push((name, scheme))
+  self.security_schemes.push({ name, kind: scheme, description, })
 }
 
 ///|
@@ -278,7 +307,9 @@ pub fn App::add_security_scheme(
 /// makes the route fully typed (its parameters, request body, and responses
 /// surface in the OpenAPI document and drive validation); `security` attaches
 /// per-operation requirements (emitted as OpenAPI `security` and enforced before
-/// the handler when their scheme has an enforcer).
+/// the handler when their scheme has an enforcer); `dependencies` names provider
+/// keys resolved through the app's container (`App::depends`) before the handler
+/// and torn down after it, whatever the handler did.
 ///
 /// The rest describe the operation: `summary` and `description` are its prose,
 /// `operation_id` the stable handle client generators name their method after,
@@ -301,6 +332,7 @@ pub fn App::route(
   name? : String = "",
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
+  dependencies? : Array[String] = [],
   include_in_schema? : Bool = true,
   validate? : Bool = true,
   openapi_extra? : Json,
@@ -320,6 +352,7 @@ pub fn App::route(
     openapi_extra,
     endpoint,
     security,
+    dependencies,
     include_in_schema,
     validate,
   })
@@ -344,6 +377,7 @@ pub fn App::route_bg(
   name? : String = "",
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
+  dependencies? : Array[String] = [],
   include_in_schema? : Bool = true,
   validate? : Bool = true,
   openapi_extra? : Json,
@@ -363,6 +397,7 @@ pub fn App::route_bg(
     openapi_extra,
     endpoint,
     security,
+    dependencies,
     include_in_schema,
     validate,
   })
@@ -393,6 +428,7 @@ pub fn App::route_stream(
   name? : String = "",
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
+  dependencies? : Array[String] = [],
   include_in_schema? : Bool = true,
   validate? : Bool = true,
   openapi_extra? : Json,
@@ -412,6 +448,7 @@ pub fn App::route_stream(
     openapi_extra,
     endpoint,
     security,
+    dependencies,
     include_in_schema,
     validate,
   })
@@ -434,6 +471,7 @@ pub fn App::stream(
   name? : String = "",
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
+  dependencies? : Array[String] = [],
   include_in_schema? : Bool = true,
   validate? : Bool = true,
   openapi_extra? : Json,
@@ -452,6 +490,7 @@ pub fn App::stream(
     name~,
     endpoint~,
     security~,
+    dependencies~,
     include_in_schema~,
     validate~,
     openapi_extra?,
@@ -475,6 +514,7 @@ pub fn App::get(
   name? : String = "",
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
+  dependencies? : Array[String] = [],
   include_in_schema? : Bool = true,
   validate? : Bool = true,
   openapi_extra? : Json,
@@ -493,6 +533,7 @@ pub fn App::get(
     name~,
     endpoint~,
     security~,
+    dependencies~,
     include_in_schema~,
     validate~,
     openapi_extra?,
@@ -560,6 +601,7 @@ pub fn App::post(
   name? : String = "",
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
+  dependencies? : Array[String] = [],
   include_in_schema? : Bool = true,
   validate? : Bool = true,
   openapi_extra? : Json,
@@ -578,6 +620,7 @@ pub fn App::post(
     name~,
     endpoint~,
     security~,
+    dependencies~,
     include_in_schema~,
     validate~,
     openapi_extra?,
@@ -600,6 +643,7 @@ pub fn App::put(
   name? : String = "",
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
+  dependencies? : Array[String] = [],
   include_in_schema? : Bool = true,
   validate? : Bool = true,
   openapi_extra? : Json,
@@ -618,6 +662,7 @@ pub fn App::put(
     name~,
     endpoint~,
     security~,
+    dependencies~,
     include_in_schema~,
     validate~,
     openapi_extra?,
@@ -640,6 +685,7 @@ pub fn App::patch(
   name? : String = "",
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
+  dependencies? : Array[String] = [],
   include_in_schema? : Bool = true,
   validate? : Bool = true,
   openapi_extra? : Json,
@@ -658,6 +704,7 @@ pub fn App::patch(
     name~,
     endpoint~,
     security~,
+    dependencies~,
     include_in_schema~,
     validate~,
     openapi_extra?,
@@ -680,6 +727,7 @@ pub fn App::delete(
   name? : String = "",
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
+  dependencies? : Array[String] = [],
   include_in_schema? : Bool = true,
   validate? : Bool = true,
   openapi_extra? : Json,
@@ -698,6 +746,7 @@ pub fn App::delete(
     name~,
     endpoint~,
     security~,
+    dependencies~,
     include_in_schema~,
     validate~,
     openapi_extra?,
@@ -707,19 +756,30 @@ pub fn App::delete(
 ///|
 /// Declare an OAuth2 password-bearer scheme under `name` and wire it as a
 /// runtime enforcer. Like `add_security_scheme` it surfaces the scheme in the
-/// OpenAPI document (with the advertised `scopes`), and additionally registers
-/// the guard a route names in its `security`: the app pulls the bearer token,
-/// verifies it against `bearer`'s secret at the app clock's time, and checks the
-/// route's required scopes — returning 401/403 before the handler runs.
+/// OpenAPI document (with the advertised `scopes` and `description`), and
+/// additionally registers the guard a route names in its `security`: the app
+/// pulls the bearer token, verifies it against `bearer`'s secret at the app
+/// clock's time, and checks the route's required scopes — returning 401/403
+/// before the handler runs.
+///
+/// `auto_error=false` admits the request instead of refusing it (← the argument
+/// every FastAPI security class takes, whose dependency then yields `None` and
+/// leaves the decision to the route).
 pub fn App::secure_oauth2(
   self : App,
   name : String,
   bearer : OAuth2PasswordBearer,
   scopes? : Array[(String, String)] = [],
+  description? : String = "",
+  auto_error? : Bool = true,
 ) -> Unit {
-  self.security_schemes.push((name, bearer.scheme(scopes~)))
+  self.security_schemes.push({
+    name,
+    kind: bearer.scheme(scopes~),
+    description,
+  })
   self.enforcers[name] = (ctx, required, now) => {
-    bearer.authenticate(ctx, now, scopes=required)
+    verify_bearer(ctx, bearer.secret, required, now, auto_error)
   }
 }
 
@@ -934,7 +994,7 @@ fn App::enforce_security(
     match self.enforcers.get(r.scheme) {
       Some(enf) => {
         enforceable = true
-        match enf(ctx, r.scopes, now) {
+        match enf(ctx, SecurityScopes::new(scopes=r.scopes), now) {
           Ok(_) => return None
           Err(resp) => last = Some(resp)
         }
@@ -986,7 +1046,9 @@ fn App::route_and_dispatch(
               return self.apply_status(ctx, unprocessable(errs))
             }
           }
-          let reply = (route.run)(ctx, bg) catch {
+          let reply = self.run_with_deps(route.dependencies, () => {
+            (route.run)(ctx, bg)
+          }) catch {
             e => Buffered(self.dispatch_exception(ctx, e))
           }
           let resp = match reply {
@@ -1061,6 +1123,56 @@ fn App::route_and_dispatch(
       ctx,
       http_exception_response(404, "Not Found".to_json(), []),
     )
+  }
+}
+
+///|
+/// The error a route's unprovidable dependency is answered with. It is a `500`
+/// because the fault is the app's wiring, not the request.
+fn unresolved_dep(key : String) -> Error {
+  http_error(500, "Unresolved dependency: " + key)
+}
+
+///|
+/// Resolve a route's declared dependencies into one request scope, run `body`,
+/// then close the scope — handing whatever error the body raised to the
+/// teardowns before re-raising it, so a `yield` dependency's cleanup sees the
+/// failure. A route with no dependencies never opens a scope.
+fn App::run_with_deps(
+  self : App,
+  keys : Array[String],
+  body : () -> Reply raise,
+) -> Reply raise {
+  if keys.is_empty() {
+    return body()
+  }
+  let scope = match self.deps {
+    Some(d) => (d.open)()
+    None => raise unresolved_dep(keys[0])
+  }
+  let mut missing = ""
+  for k in keys {
+    if !(scope.resolve)(k) {
+      missing = k
+      break
+    }
+  }
+  if missing != "" {
+    // Whatever resolved before the gap still has to be released.
+    let err = unresolved_dep(missing)
+    (scope.close)(Some(err))
+    raise err
+  }
+  let outcome : Result[Reply, Error] = Ok(body()) catch { err => Err(err) }
+  match outcome {
+    Ok(reply) => {
+      (scope.close)(None)
+      reply
+    }
+    Err(err) => {
+      (scope.close)(Some(err))
+      raise err
+    }
   }
 }
 

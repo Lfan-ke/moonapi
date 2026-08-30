@@ -46,6 +46,7 @@ pub fn Router::route(
   name? : String = "",
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
+  dependencies? : Array[String] = [],
   include_in_schema? : Bool = true,
   validate? : Bool = true,
   openapi_extra? : Json,
@@ -65,6 +66,7 @@ pub fn Router::route(
     openapi_extra,
     endpoint,
     security,
+    dependencies,
     include_in_schema,
     validate,
   })
@@ -88,6 +90,7 @@ pub fn Router::route_bg(
   name? : String = "",
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
+  dependencies? : Array[String] = [],
   include_in_schema? : Bool = true,
   validate? : Bool = true,
   openapi_extra? : Json,
@@ -107,6 +110,7 @@ pub fn Router::route_bg(
     openapi_extra,
     endpoint,
     security,
+    dependencies,
     include_in_schema,
     validate,
   })
@@ -129,6 +133,7 @@ pub fn Router::stream(
   name? : String = "",
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
+  dependencies? : Array[String] = [],
   include_in_schema? : Bool = true,
   validate? : Bool = true,
   openapi_extra? : Json,
@@ -148,6 +153,7 @@ pub fn Router::stream(
     openapi_extra,
     endpoint,
     security,
+    dependencies,
     include_in_schema,
     validate,
   })
@@ -169,6 +175,7 @@ pub fn Router::get(
   name? : String = "",
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
+  dependencies? : Array[String] = [],
   include_in_schema? : Bool = true,
   validate? : Bool = true,
   openapi_extra? : Json,
@@ -187,6 +194,7 @@ pub fn Router::get(
     name~,
     endpoint~,
     security~,
+    dependencies~,
     include_in_schema~,
     validate~,
     openapi_extra?,
@@ -209,6 +217,7 @@ pub fn Router::post(
   name? : String = "",
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
+  dependencies? : Array[String] = [],
   include_in_schema? : Bool = true,
   validate? : Bool = true,
   openapi_extra? : Json,
@@ -227,6 +236,7 @@ pub fn Router::post(
     name~,
     endpoint~,
     security~,
+    dependencies~,
     include_in_schema~,
     validate~,
     openapi_extra?,
@@ -249,6 +259,7 @@ pub fn Router::put(
   name? : String = "",
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
+  dependencies? : Array[String] = [],
   include_in_schema? : Bool = true,
   validate? : Bool = true,
   openapi_extra? : Json,
@@ -267,6 +278,7 @@ pub fn Router::put(
     name~,
     endpoint~,
     security~,
+    dependencies~,
     include_in_schema~,
     validate~,
     openapi_extra?,
@@ -289,6 +301,7 @@ pub fn Router::patch(
   name? : String = "",
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
+  dependencies? : Array[String] = [],
   include_in_schema? : Bool = true,
   validate? : Bool = true,
   openapi_extra? : Json,
@@ -307,6 +320,7 @@ pub fn Router::patch(
     name~,
     endpoint~,
     security~,
+    dependencies~,
     include_in_schema~,
     validate~,
     openapi_extra?,
@@ -329,6 +343,7 @@ pub fn Router::delete(
   name? : String = "",
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
+  dependencies? : Array[String] = [],
   include_in_schema? : Bool = true,
   validate? : Bool = true,
   openapi_extra? : Json,
@@ -347,6 +362,7 @@ pub fn Router::delete(
     name~,
     endpoint~,
     security~,
+    dependencies~,
     include_in_schema~,
     validate~,
     openapi_extra?,
@@ -371,23 +387,20 @@ pub fn Router::websocket(
 /// and becomes one of the app's own routes, and the arguments given here reach
 /// every one of them:
 ///
-/// - `tags` and `security` are placed before the route's own, so a group's tag
-///   leads and a group-wide requirement cannot be dropped by a route that adds
-///   one of its own;
+/// - `tags`, `security` and `dependencies` are placed before the route's own, so
+///   a group's tag leads and a group-wide requirement or dependency cannot be
+///   dropped by a route that adds one of its own;
 /// - `responses` are documented under the route's, which therefore wins any
 ///   status both name;
 /// - `deprecated` marks the whole group, and `include_in_schema=false` hides it,
 ///   neither of which a route can undo.
-///
-/// The one `include_router` argument with no counterpart is `dependencies`:
-/// moonapi has no route-level dependency list, since injection is explicit
-/// through a `Container` that the handler reads.
 pub fn App::include_router(
   self : App,
   router : Router,
   prefix? : String = "",
   tags? : Array[String] = [],
   security? : Array[SecurityRequirement] = [],
+  dependencies? : Array[String] = [],
   responses? : Array[ResponseSpec] = [],
   deprecated? : Bool = false,
   include_in_schema? : Bool = true,
@@ -398,6 +411,7 @@ pub fn App::include_router(
       path: join_prefix(prefix, r.path),
       tags: [..tags, ..r.tags],
       security: [..security, ..r.security],
+      dependencies: [..dependencies, ..r.dependencies],
       responses: [..responses, ..r.responses],
       deprecated: deprecated || r.deprecated,
       include_in_schema: include_in_schema && r.include_in_schema,

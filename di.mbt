@@ -15,12 +15,14 @@
 /// A provider: a keyed factory that builds a request-scoped dependency value,
 /// with an optional teardown run after the handler (FastAPI's `yield`
 /// dependencies, whose post-`yield` body is cleanup). The `factory` runs at most
-/// once per request scope; the `teardown` receives the produced value. The factory
-/// is handed the `Scope` so it can resolve *sub-dependencies* through it — FastAPI's
-/// `Depends(a)` where `a` itself declares `Depends(b)`.
+/// once per request scope; the `teardown` receives the produced value and the
+/// error that ended the request, `None` when it succeeded — the exception a
+/// FastAPI `yield` dependency sees when it wraps its `yield` in a `try`. The
+/// factory is handed the `Scope` so it can resolve *sub-dependencies* through it
+/// — FastAPI's `Depends(a)` where `a` itself declares `Depends(b)`.
 pub(all) struct Provider[V] {
   factory : (Scope[V]) -> V
-  teardown : (V) -> Unit
+  teardown : (V, Error?) -> Unit
 }
 
 ///|
@@ -28,7 +30,7 @@ pub(all) struct Provider[V] {
 /// a no-op — the common "plain value, nothing to release" case.
 pub fn[V] Provider::new(
   factory : () -> V,
-  teardown? : (V) -> Unit = _v => (),
+  teardown? : (V, Error?) -> Unit = (_v, _e) => (),
 ) -> Provider[V] {
   { factory: _scope => factory(), teardown, }
 }
@@ -38,7 +40,7 @@ pub fn[V] Provider::new(
 /// `Scope` it is handed — the sub-dependency case (FastAPI's nested `Depends`).
 pub fn[V] Provider::scoped(
   factory : (Scope[V]) -> V,
-  teardown? : (V) -> Unit = _v => (),
+  teardown? : (V, Error?) -> Unit = (_v, _e) => (),
 ) -> Provider[V] {
   { factory, teardown, }
 }
@@ -66,7 +68,7 @@ pub fn[V] Container::provide(
   self : Container[V],
   key : String,
   factory : () -> V,
-  teardown? : (V) -> Unit = _v => (),
+  teardown? : (V, Error?) -> Unit = (_v, _e) => (),
 ) -> Container[V] {
   self.providers[key] = Provider::new(factory, teardown~)
   self
@@ -80,7 +82,7 @@ pub fn[V] Container::provide_using(
   self : Container[V],
   key : String,
   factory : (Scope[V]) -> V,
-  teardown? : (V) -> Unit = _v => (),
+  teardown? : (V, Error?) -> Unit = (_v, _e) => (),
 ) -> Container[V] {
   self.providers[key] = Provider::scoped(factory, teardown~)
   self
@@ -94,7 +96,7 @@ pub fn[V] Container::override_(
   self : Container[V],
   key : String,
   factory : () -> V,
-  teardown? : (V) -> Unit = _v => (),
+  teardown? : (V, Error?) -> Unit = (_v, _e) => (),
 ) -> Container[V] {
   self.overrides[key] = Provider::new(factory, teardown~)
   self
@@ -133,7 +135,7 @@ pub struct Scope[V] {
   container : Container[V]
   cache : Map[String, V]
   building : Map[String, Bool]
-  teardowns : Array[() -> Unit]
+  teardowns : Array[(Error?) -> Unit]
 }
 
 ///|
@@ -164,7 +166,7 @@ pub fn[V] Scope::get(self : Scope[V], key : String) -> V? {
           self.building.remove(key)
           self.cache[key] = v
           let td = prov.teardown
-          self.teardowns.push(() => td(v))
+          self.teardowns.push(failure => td(v, failure))
           Some(v)
         }
       }
@@ -175,10 +177,12 @@ pub fn[V] Scope::get(self : Scope[V], key : String) -> V? {
 ///|
 /// Run every recorded teardown in LIFO order and clear them, so a closed scope
 /// is inert. Mirrors FastAPI unwinding `yield` dependencies in reverse — the
-/// last opened is torn down first.
-pub fn[V] Scope::close(self : Scope[V]) -> Unit {
+/// last opened is torn down first. `failure` is the error that ended the request
+/// and is handed to every teardown, so cleanup can tell a failed request from a
+/// successful one and roll back rather than commit.
+pub fn[V] Scope::close(self : Scope[V], failure? : Error) -> Unit {
   for i = self.teardowns.length() - 1; i >= 0; i = i - 1 {
-    self.teardowns[i]()
+    self.teardowns[i](failure)
   }
   self.teardowns.clear()
 }
@@ -189,12 +193,64 @@ pub fn[V] Scope::close(self : Scope[V]) -> Unit {
 /// dependency brackets the request. The handler resolves whatever it needs
 /// through the scope; every dependency built during the call is released
 /// (LIFO) once it returns, then the response is handed back.
+///
+/// A handler that raises is released the same way, and the error reaches the
+/// teardowns before it is re-raised for the app's exception handlers to map:
+/// cleanup that only ran on the happy path would leak exactly when it matters.
 pub fn[V] Container::run(
   self : Container[V],
-  handler : (Scope[V]) -> @moonasgi.Response,
-) -> @moonasgi.Response {
+  handler : (Scope[V]) -> @moonasgi.Response raise,
+) -> @moonasgi.Response raise {
   let scope = self.open_scope()
-  let resp = handler(scope)
-  scope.close()
-  resp
+  // `errdefer` cannot bind the error, and the teardowns are entitled to see it,
+  // so the outcome is captured and dispatched on instead.
+  let outcome : Result[@moonasgi.Response, Error] = Ok(handler(scope)) catch {
+    err => Err(err)
+  }
+  match outcome {
+    Ok(resp) => {
+      scope.close()
+      resp
+    }
+    Err(err) => {
+      scope.close(failure=err)
+      raise err
+    }
+  }
+}
+
+///|
+/// A container with its dependency value type erased (`Container::erase` builds
+/// one), so a non-generic `App` can hold one. Resolving through it runs a
+/// provider's factory and records its teardown exactly as `Scope::get` does;
+/// what it cannot do is hand the value back — which is precisely what a
+/// route-level dependency does not need, since FastAPI's `dependencies=[...]`
+/// discards the values it builds and keeps only their effects.
+pub struct Deps {
+  open : () -> DepsScope
+}
+
+///|
+/// One request's resolution scope over an erased container: resolve a key
+/// (`false` when nothing provides it), then close, handing any failure to the
+/// teardowns.
+struct DepsScope {
+  resolve : (String) -> Bool
+  close : (Error?) -> Unit
+}
+
+///|
+/// This container with its value type erased, ready for `App::depends`. The
+/// providers, the per-request cache, the sub-dependency resolution and the LIFO
+/// teardown are all the container's own; erasure hides only the value.
+pub fn[V] Container::erase(self : Container[V]) -> Deps {
+  {
+    open: () => {
+      let scope = self.open_scope()
+      {
+        resolve: key => scope.get(key) is Some(_),
+        close: failure => scope.close(failure?),
+      }
+    },
+  }
 }

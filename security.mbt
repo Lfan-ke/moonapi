@@ -166,13 +166,18 @@ pub fn Context::bearer_token(self : Context) -> String? {
 }
 
 ///|
-/// A `401 Unauthorized` with a `WWW-Authenticate: Bearer` challenge and a
-/// `{"detail": ...}` body — FastAPI's response for a missing or invalid token.
-fn unauthorized(detail : String) -> @moonasgi.Response {
+/// A `401 Unauthorized` with a `WWW-Authenticate` challenge and a
+/// `{"detail": ...}` body — FastAPI's response for a missing or invalid
+/// credential. RFC 9110 §15.5.2 requires the challenge, so it is a parameter:
+/// `Basic realm="…"` for Basic, `Bearer scope="…"` for a scoped bearer route.
+fn unauthorized(
+  detail : String,
+  challenge? : String = "Bearer",
+) -> @moonasgi.Response {
   let body : Map[String, Json] = Map([("detail", detail.to_json())])
   @moonasgi.Response::new(
     401,
-    [("content-type", "application/json"), ("www-authenticate", "Bearer")],
+    [("content-type", "application/json"), ("www-authenticate", challenge)],
     @utf8.encode(body.to_json().stringify()),
   )
 }
@@ -200,6 +205,10 @@ fn forbidden(detail : String) -> @moonasgi.Response {
 ///   `{"detail":"Could not validate credentials"}`
 /// - valid token missing a required scope -> `403` `{"detail":"Not enough permissions"}`
 ///
+/// Both `401`s carry the challenge the required scopes describe — `Bearer` on
+/// its own, or `Bearer scope="..."` — so a client learns what it should have
+/// asked for.
+///
 /// `now_secs` is the verification time (Unix seconds), passed in so the check
 /// stays pure and testable on every backend.
 pub fn OAuth2PasswordBearer::authenticate(
@@ -208,24 +217,7 @@ pub fn OAuth2PasswordBearer::authenticate(
   now_secs : Int64,
   scopes? : Array[String] = [],
 ) -> Result[AuthenticatedUser, @moonasgi.Response] {
-  let token = match ctx.bearer_token() {
-    None => return Err(unauthorized("Not authenticated"))
-    Some(t) => t
-  }
-  let claims = jwt_verify(token, self.secret, now_secs) catch {
-    _ => return Err(unauthorized("Could not validate credentials"))
-  }
-  let user : AuthenticatedUser = {
-    subject: subject_from_claims(claims),
-    scopes: scopes_from_claims(claims),
-    claims,
-  }
-  for required in scopes {
-    if !user.has_scope(required) {
-      return Err(forbidden("Not enough permissions"))
-    }
-  }
-  Ok(user)
+  verify_bearer(ctx, self.secret, SecurityScopes::new(scopes~), now_secs, true)
 }
 
 // -- token issuance -----------------------------------------------------------

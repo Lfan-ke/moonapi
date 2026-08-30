@@ -59,10 +59,11 @@ test "per-op security: a scoped route accepts a scoped token, denies otherwise" 
     app.handle(mkreq_auth("GET", "/items", "Bearer " + narrow)).status,
     403,
   )
-  // No credentials at all: 401 with the bearer challenge.
+  // No credentials at all: 401, and the challenge names the scope the route
+  // wanted, so the client knows what to ask its provider for (RFC 6750 §3).
   let anon = app.handle(mkreq("GET", "/items"))
   assert_eq(anon.status, 401)
-  assert_eq(anon.header("www-authenticate"), Some("Bearer"))
+  assert_eq(anon.header("www-authenticate"), Some("Bearer scope=\"items\""))
 }
 
 ///|

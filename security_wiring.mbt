@@ -30,13 +30,13 @@ pub fn SecurityRequirement::new(
 
 ///|
 /// The runtime guard behind a named scheme: given the request context, the
-/// route's required scopes, and the verification time (Unix seconds), either the
-/// authenticated user or the 401/403 response to return. Registered by
-/// `App::secure_oauth2`; a documentation-only scheme (a bare
-/// `add_security_scheme`) has none, so it is described in the spec but not
+/// scopes the route required at this call site, and the verification time (Unix
+/// seconds), either the authenticated user or the 401/403 response to return.
+/// Registered by the `App::secure_*` functions; a documentation-only scheme (a
+/// bare `add_security_scheme`) has none, so it is described in the spec but not
 /// enforced — exactly FastAPI's split between a declared scheme and a wired
 /// dependency.
-type SecurityEnforcer = (Context, Array[String], Int64) -> Result[
+type SecurityEnforcer = (Context, SecurityScopes, Int64) -> Result[
   AuthenticatedUser,
   @moonasgi.Response,
 ]

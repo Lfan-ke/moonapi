@@ -1,22 +1,48 @@
 // OpenAPI security scheme objects (← FastAPI surfacing `OAuth2PasswordBearer`,
-// `HTTPBearer`, `APIKeyHeader`, etc. under `components/securitySchemes`). A
+// `OAuth2AuthorizationCodeBearer`, `HTTPBearer`, `HTTPBasic`, `HTTPDigest`,
+// `APIKeyHeader`, `OpenIdConnect`, etc. under `components/securitySchemes`). A
 // `SecurityScheme` is declared on the `App` and emitted into the generated spec
-// so the OAuth2 / JWT layer from the security module is described to clients.
-// Both spec shapes are produced: OpenAPI 3.x `securitySchemes`, and the Swagger
-// 2.0 `securityDefinitions` shape (a flat OAuth2 flow, no `http` type).
+// so the security layer is described to clients. Both spec shapes are produced:
+// OpenAPI 3.x `securitySchemes`, and the Swagger 2.0 `securityDefinitions` shape
+// (flat OAuth2 flows, no `http` type, and no way at all to say `openIdConnect`).
 
 ///|
 /// A security scheme describing how a client authenticates. Mirrors the OpenAPI
-/// scheme types: an OAuth2 password flow (its token URL and named scopes), an
-/// HTTP bearer scheme (with a `bearerFormat` such as `JWT`), an API key in a
-/// header / query / cookie, and HTTP Basic.
+/// scheme types: the two OAuth2 flows a browser or a service actually uses
+/// (password and authorization code), HTTP bearer / basic / digest, an API key
+/// in a header / query / cookie, and OpenID Connect discovery.
 pub(all) enum SecurityScheme {
   OAuth2Password(token_url~ : String, scopes~ : Array[(String, String)])
+  // ← FastAPI's `OAuth2AuthorizationCodeBearer`: the endpoint the browser is
+  // sent to, the one the code is exchanged at, and — when the provider offers it
+  // — where a token is refreshed. An empty `refresh_url` is left out.
+  OAuth2Code(
+    authorization_url~ : String,
+    token_url~ : String,
+    refresh_url~ : String,
+    scopes~ : Array[(String, String)]
+  )
   HttpBearer(bearer_format~ : String)
   ApiKeyHeader(name~ : String)
   ApiKeyQuery(name~ : String)
   ApiKeyCookie(name~ : String)
   HttpBasic
+  // ← FastAPI's `HTTPDigest`. RFC 7616 negotiates through a `WWW-Authenticate`
+  // challenge, and OpenAPI describes only the scheme name.
+  HttpDigest
+  // ← FastAPI's `OpenIdConnect`: one discovery document from which a client
+  // reads every other parameter.
+  OpenIdConnect(url~ : String)
+}
+
+///|
+/// A security scheme as an application declares it: the `name` routes refer to
+/// it by, the `kind` that shapes the emitted object, and the prose beside it
+/// (← the `description=` every FastAPI security class takes).
+struct DeclaredScheme {
+  name : String
+  kind : SecurityScheme
+  description : String
 }
 
 ///|
@@ -49,12 +75,18 @@ fn SecurityScheme::to_openapi_3x(self : SecurityScheme) -> Json {
         ("tokenUrl", token_url.to_json()),
         ("scopes", scopes_object(scopes)),
       ])
-      let flows : Map[String, Json] = Map([("password", flow.to_json())])
-      let m : Map[String, Json] = Map([
-        ("type", "oauth2".to_json()),
-        ("flows", flows.to_json()),
+      oauth2_json("password", flow)
+    }
+    OAuth2Code(authorization_url~, token_url~, refresh_url~, scopes~) => {
+      let flow : Map[String, Json] = Map([
+        ("authorizationUrl", authorization_url.to_json()),
+        ("tokenUrl", token_url.to_json()),
       ])
-      m.to_json()
+      if refresh_url != "" {
+        flow["refreshUrl"] = refresh_url.to_json()
+      }
+      flow["scopes"] = scopes_object(scopes)
+      oauth2_json("authorizationCode", flow)
     }
     HttpBearer(bearer_format~) => {
       let m : Map[String, Json] = Map([
@@ -67,14 +99,37 @@ fn SecurityScheme::to_openapi_3x(self : SecurityScheme) -> Json {
     ApiKeyHeader(name~) => api_key_json("header", name)
     ApiKeyQuery(name~) => api_key_json("query", name)
     ApiKeyCookie(name~) => api_key_json("cookie", name)
-    HttpBasic => {
+    HttpBasic => http_scheme_json("basic")
+    HttpDigest => http_scheme_json("digest")
+    OpenIdConnect(url~) => {
       let m : Map[String, Json] = Map([
-        ("type", "http".to_json()),
-        ("scheme", "basic".to_json()),
+        ("type", "openIdConnect".to_json()),
+        ("openIdConnectUrl", url.to_json()),
       ])
       m.to_json()
     }
   }
+}
+
+///|
+/// An `oauth2` scheme object carrying one named 3.x flow.
+fn oauth2_json(flow_name : String, flow : Map[String, Json]) -> Json {
+  let flows : Map[String, Json] = Map([(flow_name, flow.to_json())])
+  let m : Map[String, Json] = Map([
+    ("type", "oauth2".to_json()),
+    ("flows", flows.to_json()),
+  ])
+  m.to_json()
+}
+
+///|
+/// An `{"type":"http","scheme":...}` object for the HTTP authentication schemes.
+fn http_scheme_json(scheme : String) -> Json {
+  let m : Map[String, Json] = Map([
+    ("type", "http".to_json()),
+    ("scheme", scheme.to_json()),
+  ])
+  m.to_json()
 }
 
 ///|
@@ -89,12 +144,16 @@ fn api_key_json(in_ : String, name : String) -> Json {
 }
 
 ///|
-/// This scheme as a Swagger 2.0 security definition. Swagger 2.0 has no `http`
-/// type: an HTTP bearer is expressed as an `apiKey` in the `Authorization`
-/// header (the standard 2.0 workaround), Basic uses the `basic` type, and the
-/// OAuth2 flow is the flat 2.0 form (`flow` + `tokenUrl` at top level). Swagger
-/// 2.0 `apiKey` only allows `header`/`query`, so a cookie key maps to a header.
-fn SecurityScheme::to_openapi_20(self : SecurityScheme) -> Json {
+/// This scheme as a Swagger 2.0 security definition, or `None` when 2.0 cannot
+/// express it. Swagger 2.0 has no `http` type: an HTTP bearer or digest is
+/// expressed as an `apiKey` in the `Authorization` header (the standard 2.0
+/// workaround), Basic uses the `basic` type, and OAuth2 flows are the flat 2.0
+/// form (`flow` + URLs at top level, `accessCode` being 2.0's name for the
+/// authorization-code flow). Swagger 2.0 `apiKey` only allows `header`/`query`,
+/// so a cookie key maps to a header. OpenID Connect has no 2.0 equivalent at
+/// all, and inventing one would describe an API that does not exist — so it is
+/// left out of the 2.0 document.
+fn SecurityScheme::to_openapi_20(self : SecurityScheme) -> Json? {
   match self {
     OAuth2Password(token_url~, scopes~) => {
       let m : Map[String, Json] = Map([
@@ -103,32 +162,54 @@ fn SecurityScheme::to_openapi_20(self : SecurityScheme) -> Json {
         ("tokenUrl", token_url.to_json()),
         ("scopes", scopes_object(scopes)),
       ])
-      m.to_json()
+      Some(m.to_json())
     }
-    HttpBearer(_) => api_key_json("header", "Authorization")
-    ApiKeyHeader(name~) => api_key_json("header", name)
-    ApiKeyQuery(name~) => api_key_json("query", name)
-    ApiKeyCookie(name~) => api_key_json("header", name)
+    OAuth2Code(authorization_url~, token_url~, scopes~, ..) => {
+      let m : Map[String, Json] = Map([
+        ("type", "oauth2".to_json()),
+        ("flow", "accessCode".to_json()),
+        ("authorizationUrl", authorization_url.to_json()),
+        ("tokenUrl", token_url.to_json()),
+        ("scopes", scopes_object(scopes)),
+      ])
+      Some(m.to_json())
+    }
+    HttpBearer(_) => Some(api_key_json("header", "Authorization"))
+    HttpDigest => Some(api_key_json("header", "Authorization"))
+    ApiKeyHeader(name~) => Some(api_key_json("header", name))
+    ApiKeyQuery(name~) => Some(api_key_json("query", name))
+    ApiKeyCookie(name~) => Some(api_key_json("header", name))
     HttpBasic => {
       let m : Map[String, Json] = Map([("type", "basic".to_json())])
-      m.to_json()
+      Some(m.to_json())
     }
+    OpenIdConnect(_) => None
   }
 }
 
 ///|
 /// The `{name: scheme, ...}` object for the app's declared schemes, rendered in
-/// the shape `version` uses.
+/// the shape `version` uses, each carrying its `description` when it has one. A
+/// scheme the target version cannot express is omitted.
 fn security_schemes_json(
-  schemes : Array[(String, SecurityScheme)],
+  schemes : Array[DeclaredScheme],
   version : OpenApiVersion,
-) -> Json {
+) -> Map[String, Json] {
   let m : Map[String, Json] = Map([])
-  for pair in schemes {
-    m[pair.0] = match version {
-      Swagger20 => pair.1.to_openapi_20()
-      _ => pair.1.to_openapi_3x()
+  for d in schemes {
+    let body = match version {
+      Swagger20 => d.kind.to_openapi_20()
+      _ => Some(d.kind.to_openapi_3x())
+    }
+    match body {
+      Some(j) =>
+        m[d.name] = if d.description != "" {
+          with_description(j, d.description)
+        } else {
+          j
+        }
+      None => ()
     }
   }
-  m.to_json()
+  m
 }

@@ -301,17 +301,20 @@ pub fn App::openapi(
   // own plus every mounted sub-app's): under `components` (`schemas` /
   // `securitySchemes`) in 3.x, or the top-level `definitions` /
   // `securityDefinitions` in Swagger 2.0.
-  let schemes : Array[(String, SecurityScheme)] = []
+  let schemes : Array[DeclaredScheme] = []
   let seen : Map[String, Bool] = Map([])
   self.collect_security_schemes(schemes, seen)
-  let has_schemes = schemes.length() > 0
+  // Rendered before the emptiness test, since a scheme the target version cannot
+  // express drops out here and must not leave an empty object behind.
+  let rendered = security_schemes_json(schemes, version)
+  let has_schemes = !rendered.is_empty()
   match version {
     Swagger20 => {
       if !defs.is_empty() {
         doc["definitions"] = defs.to_json()
       }
       if has_schemes {
-        doc["securityDefinitions"] = security_schemes_json(schemes, version)
+        doc["securityDefinitions"] = rendered.to_json()
       }
     }
     _ =>
@@ -321,7 +324,7 @@ pub fn App::openapi(
           comp["schemas"] = defs.to_json()
         }
         if has_schemes {
-          comp["securitySchemes"] = security_schemes_json(schemes, version)
+          comp["securitySchemes"] = rendered.to_json()
         }
         doc["components"] = comp.to_json()
       }
@@ -355,13 +358,13 @@ fn App::collect_routes(
 /// names already taken.
 fn App::collect_security_schemes(
   self : App,
-  out : Array[(String, SecurityScheme)],
+  out : Array[DeclaredScheme],
   seen : Map[String, Bool],
 ) -> Unit {
-  for pair in self.security_schemes {
-    if !seen.contains(pair.0) {
-      seen[pair.0] = true
-      out.push(pair)
+  for d in self.security_schemes {
+    if !seen.contains(d.name) {
+      seen[d.name] = true
+      out.push(d)
     }
   }
   for entry in self.mounts {

@@ -21,28 +21,62 @@ fn loc_str(l : ParamLoc) -> String {
 
 ///|
 /// A single request parameter descriptor: its `name`, `loc`ation, scalar
-/// `schema`, whether it is `required`, and an optional `description`. Path
-/// parameters are always required (OpenAPI requires it); the constructor keeps
-/// the caller's value but validation treats path params as mandatory.
+/// `schema`, whether it is `required`, an optional `description`, its value
+/// `constraints`, the `default` that stands in when the request omits it, and
+/// the `alias` it travels under on the wire. Path parameters are always required
+/// (OpenAPI requires it); the constructor keeps the caller's value but
+/// validation treats path params as mandatory.
 pub(all) struct Param {
   name : String
   loc : ParamLoc
   schema : Schema
   required : Bool
   description : String
+  constraints : Array[Constraint]
+  default : Json?
+  alias_ : String
 } derive(Eq)
 
 ///|
 /// Build a parameter descriptor. `schema` defaults to a string and `required` to
-/// `true`.
+/// `true`. `constraints` are the Pydantic-style bounds FastAPI reads off a
+/// `Query(ge=…, max_length=…)` — emitted into the parameter's documented schema
+/// *and* enforced on the inbound value. `default` is emitted and makes the
+/// parameter optional, since a value that has one is never missing. `alias` is
+/// the name the parameter travels under when that differs from the one the code
+/// calls it (← `Query(alias="item-query")`).
 pub fn Param::new(
   name : String,
   loc : ParamLoc,
   schema? : Schema = SStr,
   required? : Bool = true,
   description? : String = "",
+  constraints? : Array[Constraint] = [],
+  default? : Json,
+  alias_? : String = "",
 ) -> Param {
-  { name, loc, schema, required, description, }
+  { name, loc, schema, required, description, constraints, default, alias_, }
+}
+
+///|
+/// The name this parameter travels under: its `alias` when it has one, else its
+/// own name. This is what is read off the request, what the document calls it,
+/// and what a validation error's `loc` points at — all three being the client's
+/// view of the parameter.
+pub fn Param::key(self : Param) -> String {
+  if self.alias_ == "" {
+    self.name
+  } else {
+    self.alias_
+  }
+}
+
+///|
+/// Whether a request must carry this parameter. One with a default never must —
+/// its absence is answered by the default, exactly as a Python default argument
+/// is.
+pub fn Param::is_required(self : Param) -> Bool {
+  self.required && self.default is None
 }
 
 ///|
@@ -101,22 +135,55 @@ fn param_json(
   version : OpenApiVersion,
 ) -> Json {
   let m : Map[String, Json] = Map([
-    ("name", p.name.to_json()),
+    ("name", p.key().to_json()),
     ("in", loc_str(p.loc).to_json()),
-    ("required", p.required.to_json()),
+    ("required", p.is_required().to_json()),
   ])
   if p.description != "" {
     m["description"] = p.description.to_json()
   }
   match version {
+    // Swagger 2.0 puts a scalar's type and its constraint keywords on the
+    // parameter object itself — there is no `schema` to hang them off.
     Swagger20 =>
       match scalar_name(p.schema) {
-        Some(t) => m["type"] = t.to_json()
-        None => m["schema"] = emit_schema(p.schema, defs, version)
+        Some(t) => {
+          m["type"] = t.to_json()
+          merge_into(m, param_facets(p, version))
+        }
+        None =>
+          m["schema"] = param_facets_on(
+            emit_schema(p.schema, defs, version),
+            p,
+            version,
+          )
       }
-    _ => m["schema"] = emit_schema(p.schema, defs, version)
+    _ =>
+      m["schema"] = param_facets_on(
+        emit_schema(p.schema, defs, version),
+        p,
+        version,
+      )
   }
   m.to_json()
+}
+
+///|
+/// `j` with the parameter's constraints and default written into it.
+fn param_facets_on(j : Json, p : Param, version : OpenApiVersion) -> Json {
+  let with_c = with_constraints(j, p.constraints, version)
+  match p.default {
+    Some(d) => with_key(with_c, "default", d)
+    None => with_c
+  }
+}
+
+///|
+/// Just the keywords a parameter's constraints and default contribute, as a bare
+/// object — for the Swagger 2.0 shape, which merges them into the parameter.
+fn param_facets(p : Param, version : OpenApiVersion) -> Json {
+  let empty : Map[String, Json] = Map([])
+  param_facets_on(empty.to_json(), p, version)
 }
 
 ///|
