@@ -1,8 +1,13 @@
 // Server-Sent Events (← FastAPI's `EventSourceResponse` / `StreamingResponse`
 // with `media_type="text/event-stream"`). One `ServerSentEvent` frames per the
-// WHATWG event-stream format; `sse_response` concatenates a batch into a ready
-// `text/event-stream` body. The framing is the value here — a server (mooncat)
-// pushes frames over time; this builds each one and the response envelope.
+// WHATWG event-stream format; `sse_response` is a `text/event-stream` stream of
+// those frames, one chunk each.
+//
+// A chunk per frame is the whole point: an event stream that arrived as one body
+// is not an event stream, it is a file that happens to be shaped like one. The
+// client dispatches an event when it reads that event's blank line, so the frames
+// have to reach it separately for anything to happen before the last one is
+// written.
 
 ///|
 /// One Server-Sent Event. `data` is the payload (multi-line data is split into
@@ -119,18 +124,16 @@ pub fn ServerSentEvent::encode(self : ServerSentEvent) -> String {
 }
 
 ///|
-/// A `text/event-stream` response whose body is the framed `events`. Sets
+/// A `text/event-stream` response carrying `events`, one frame per chunk — hand
+/// it to `App::stream` and each reaches the client on its own. Sets
 /// `Cache-Control: no-cache` and `Connection: keep-alive`, the headers an SSE
 /// endpoint sends so intermediaries don't buffer or close the stream.
 pub fn sse_response(
   events : Array[ServerSentEvent],
   status? : Int = 200,
   headers? : Array[(String, String)] = [],
-) -> @moonasgi.Response {
-  let sb = StringBuilder()
-  for ev in events {
-    sb.write_string(ev.encode())
-  }
+) -> @moonasgi.StreamingResponse {
+  let chunks : Array[Bytes] = events.map(ev => @utf8.encode(ev.encode()))
   let hs : Array[(String, String)] = [
     ("content-type", "text/event-stream; charset=utf-8"),
     ("cache-control", "no-cache"),
@@ -139,5 +142,5 @@ pub fn sse_response(
   for h in headers {
     hs.push(h)
   }
-  @moonasgi.Response::new(status, hs, @utf8.encode(sb.to_string()))
+  @moonasgi.StreamingResponse::new(status~, headers=hs, chunks~)
 }

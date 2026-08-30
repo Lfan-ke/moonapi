@@ -16,13 +16,36 @@ pub(all) struct FormField {
 ///|
 /// An uploaded file from a multipart part: the form-field `name` it came under,
 /// the client's `filename`, its declared `content_type` (empty when the part
-/// carried no `Content-Type`), and the raw `content` bytes exactly as received.
+/// carried no `Content-Type`), the raw `content` bytes exactly as received, and
+/// the part's own `headers` with their names lowercased, in body order.
+///
+/// `content_type` is kept as its own field because nearly every caller wants it
+/// and nothing else; `headers` is there for the rest — a
+/// `Content-Transfer-Encoding` a handler must honour, a checksum a client
+/// attached — which otherwise had nowhere to be read from.
 pub(all) struct UploadFile {
   name : String
   filename : String
   content_type : String
   content : Bytes
+  headers : Array[(String, String)]
 } derive(Eq)
+
+///|
+/// The uploaded size in bytes (← FastAPI's `UploadFile.size`). Derived rather
+/// than stored: a field could be set to disagree with `content`, and a size that
+/// lies about the bytes beside it is worse than no size at all.
+pub fn UploadFile::size(self : UploadFile) -> Int {
+  self.content.length()
+}
+
+///|
+/// Look up one of the part's own headers by name, `None` if it carried no such
+/// header. Names are matched lowercased, the same convention as
+/// `@moonasgi.Request::header`.
+pub fn UploadFile::header(self : UploadFile, name : String) -> String? {
+  header_of(self.headers, name)
+}
 
 ///|
 /// A parsed form: its plain `fields` and its uploaded `files`, in body order. A
@@ -65,6 +88,41 @@ pub fn FormData::file(self : FormData, name : String) -> UploadFile? {
   for f in self.files {
     if f.name == name {
       return Some(f)
+    }
+  }
+  None
+}
+
+///|
+/// What a submitted form may cost before it is refused: how many parts it may
+/// carry, and how many bytes any one part may hold.
+///
+/// A request body is attacker-controlled and, on this SEAM, fully buffered before
+/// a route ever sees it. Unbounded, a body that is nothing but boundaries becomes
+/// as many parts as it has bytes — every one of them an allocation the app made
+/// on the sender's say-so, on top of the body it already holds.
+pub(all) struct FormLimits {
+  max_parts : Int
+  max_part_size : Int
+} derive(Eq)
+
+///|
+/// Limits with Starlette's defaults — 1000 parts of at most 1 MiB — or either
+/// bound overridden.
+pub fn FormLimits::new(
+  max_parts? : Int = 1000,
+  max_part_size? : Int = 1024 * 1024,
+) -> FormLimits {
+  { max_parts, max_part_size, }
+}
+
+///|
+/// Look up a header by name in a lowercased-name pair list.
+fn header_of(headers : Array[(String, String)], name : String) -> String? {
+  let key = name.to_lower()
+  for h in headers {
+    if h.0 == key {
+      return Some(h.1)
     }
   }
   None
@@ -163,14 +221,18 @@ fn decode_component(raw : Bytes, start : Int, end : Int) -> String {
 ///|
 /// Parse an `application/x-www-form-urlencoded` body into fields: split on `&`
 /// into pairs, split each on its first `=`, percent/plus-decode both halves. A
-/// pair with no `=` is a bare key with an empty value.
-fn parse_urlencoded(body : Bytes) -> Array[FormField] {
+/// pair with no `=` is a bare key with an empty value. `None` when the body
+/// breaks `limits` — a pair counts as a part, since it costs one the same way.
+fn parse_urlencoded(body : Bytes, limits : FormLimits) -> Array[FormField]? {
   let out : Array[FormField] = []
   let n = body.length()
   let mut start = 0
   for i = 0; i <= n; i = i + 1 {
     if i == n || body[i] == b'&' {
       if i > start {
+        if out.length() == limits.max_parts || i - start > limits.max_part_size {
+          return None
+        }
         let mut eq = -1
         for j = start; j < i; j = j + 1 {
           if body[j] == b'=' {
@@ -188,7 +250,7 @@ fn parse_urlencoded(body : Bytes) -> Array[FormField] {
       start = i + 1
     }
   }
-  out
+  Some(out)
 }
 
 // -- multipart/form-data ------------------------------------------------------
@@ -249,10 +311,10 @@ fn str_index_of(s : String, needle : String, from : Int) -> Int {
 }
 
 ///|
-/// One parsed multipart part: its header block (decoded as text) and the byte
-/// range of its content within the body.
+/// One parsed multipart part: its own headers and the byte range of its content
+/// within the body.
 priv struct Part {
-  headers : String
+  headers : Array[(String, String)]
   content_start : Int
   content_end : Int
 }
@@ -264,7 +326,15 @@ priv struct Part {
 /// `--boundary` lies the part — its header block, a blank `CRLF CRLF`, then its
 /// content. The two bytes before the next delimiter are that part's own trailing
 /// CRLF and don't belong to the content.
-fn split_parts(body : Bytes, boundary : String) -> Array[Part] {
+///
+/// `None` once the body would yield more than `max_parts`, which is checked
+/// before each part is built rather than after the split, so a body of nothing
+/// but boundaries costs the bound and not its own length.
+fn split_parts(
+  body : Bytes,
+  boundary : String,
+  max_parts : Int,
+) -> Array[Part]? {
   let parts : Array[Part] = []
   let dash = @utf8.encode("--" + boundary)
   let crlf = b"\r\n"
@@ -287,7 +357,12 @@ fn split_parts(body : Bytes, boundary : String) -> Array[Part] {
       // Malformed part — stop rather than invent structure.
       break
     }
-    let headers = @utf8.decode_lossy(body[head_start:sep].to_owned()[:])
+    if parts.length() == max_parts {
+      return None
+    }
+    let headers = part_headers(
+      @utf8.decode_lossy(body[head_start:sep].to_owned()[:]),
+    )
     let content_start = sep + 4
     let content_end = next - 2 // strip the CRLF that precedes the next delimiter
     parts.push({
@@ -301,53 +376,85 @@ fn split_parts(body : Bytes, boundary : String) -> Array[Part] {
     })
     pos = next
   }
-  parts
+  Some(parts)
 }
 
 ///|
-/// Read one header line's value out of a part's header block, `None` if the part
-/// has no such header. Header names are matched case-insensitively.
-fn part_header(headers : String, name : String) -> String? {
-  let lower = headers.to_lower()
-  let key = name.to_lower() + ":"
-  let idx = str_index_of(lower, key, 0)
-  if idx < 0 {
-    return None
+/// Split a part's header block into `(lowercased name, value)` pairs, one per
+/// line. A line without a colon is not a header field, and is dropped rather
+/// than guessed at.
+fn part_headers(block : String) -> Array[(String, String)] {
+  let out : Array[(String, String)] = []
+  let n = block.length()
+  let mut start = 0
+  for i = 0; i <= n; i = i + 1 {
+    if i == n || block[i].to_int() == 0x0A {
+      let end = if i > start && block[i - 1].to_int() == 0x0D {
+        i - 1
+      } else {
+        i
+      }
+      let line = block[start:end].to_owned()
+      let mut colon = -1
+      for j = 0; j < line.length(); j = j + 1 {
+        if line[j] == ':' {
+          colon = j
+          break
+        }
+      }
+      if colon > 0 {
+        out.push(
+          (
+            trim_spaces(line[0:colon].to_owned()).to_lower(),
+            trim_spaces(line[colon + 1:].to_owned()),
+          ),
+        )
+      }
+      start = i + 1
+    }
   }
-  let mut i = idx + key.length()
-  let n = headers.length()
-  let sb = StringBuilder()
-  while i < n && headers[i].to_int() != 0x0D && headers[i].to_int() != 0x0A {
-    sb.write_char(headers[i].unsafe_to_char())
-    i = i + 1
-  }
-  Some(trim_spaces(sb.to_string()))
+  out
 }
 
 ///|
 /// Parse a `multipart/form-data` body given its `boundary` into a `FormData`,
 /// sorting each part into a field or a file by whether its `Content-Disposition`
-/// carries a `filename`.
-fn parse_multipart(body : Bytes, boundary : String) -> FormData {
+/// carries a `filename`. `None` when the body breaks `limits`.
+fn parse_multipart(
+  body : Bytes,
+  boundary : String,
+  limits : FormLimits,
+) -> FormData? {
   let fields : Array[FormField] = []
   let files : Array[UploadFile] = []
-  for part in split_parts(body, boundary) {
-    let disposition = part_header(part.headers, "content-disposition").unwrap_or(
+  let parts = match split_parts(body, boundary, limits.max_parts) {
+    Some(ps) => ps
+    None => return None
+  }
+  for part in parts {
+    if part.content_end - part.content_start > limits.max_part_size {
+      return None
+    }
+    let disposition = header_of(part.headers, "content-disposition").unwrap_or(
       "",
     )
     let name = header_param(disposition, "name").unwrap_or("")
     let content = body[part.content_start:part.content_end].to_owned()
     match header_param(disposition, "filename") {
       Some(filename) => {
-        let content_type = part_header(part.headers, "content-type").unwrap_or(
-          "",
-        )
-        files.push({ name, filename, content_type, content, })
+        let content_type = header_of(part.headers, "content-type").unwrap_or("")
+        files.push({
+          name,
+          filename,
+          content_type,
+          content,
+          headers: part.headers,
+        })
       }
       None => fields.push({ name, value: @utf8.decode_lossy(content[:]), })
     }
   }
-  { fields, files, }
+  Some({ fields, files, })
 }
 
 ///|
@@ -365,17 +472,29 @@ fn boundary_of(content_type : String) -> String? {
 /// its boundary into fields and files, an `application/x-www-form-urlencoded`
 /// body is decoded into fields. Any other (or absent) content type yields an
 /// empty form rather than raising, so the extractor stays total.
-pub fn Context::form(self : Context) -> FormData {
+///
+/// `None` when the body breaks `limits` — more parts than `max_parts`, or a part
+/// longer than `max_part_size`. The form is refused whole rather than truncated:
+/// a handler given the first thousand parts of a larger form would answer a
+/// request nobody sent. An empty `Some` is the other answer, and means the
+/// request carried no form at all.
+pub fn Context::form(
+  self : Context,
+  limits? : FormLimits = FormLimits::new(),
+) -> FormData? {
   let ct = self.request.header("content-type").unwrap_or("")
   let ct_lower = ct.to_lower()
   if str_index_of(ct_lower, "multipart/form-data", 0) >= 0 {
     match boundary_of(ct) {
-      Some(b) => parse_multipart(self.request.body, b)
-      None => { fields: [], files: [], }
+      Some(b) => parse_multipart(self.request.body, b, limits)
+      None => Some({ fields: [], files: [], })
     }
   } else if str_index_of(ct_lower, "application/x-www-form-urlencoded", 0) >= 0 {
-    { fields: parse_urlencoded(self.request.body), files: [], }
+    match parse_urlencoded(self.request.body, limits) {
+      Some(fields) => Some({ fields, files: [], })
+      None => None
+    }
   } else {
-    { fields: [], files: [], }
+    Some({ fields: [], files: [], })
   }
 }

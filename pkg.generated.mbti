@@ -8,6 +8,162 @@ import {
 }
 
 // Values
+pub const HTTP_100_CONTINUE : Int = 100
+
+pub const HTTP_101_SWITCHING_PROTOCOLS : Int = 101
+
+pub const HTTP_102_PROCESSING : Int = 102
+
+pub const HTTP_103_EARLY_HINTS : Int = 103
+
+pub const HTTP_200_OK : Int = 200
+
+pub const HTTP_201_CREATED : Int = 201
+
+pub const HTTP_202_ACCEPTED : Int = 202
+
+pub const HTTP_203_NON_AUTHORITATIVE_INFORMATION : Int = 203
+
+pub const HTTP_204_NO_CONTENT : Int = 204
+
+pub const HTTP_205_RESET_CONTENT : Int = 205
+
+pub const HTTP_206_PARTIAL_CONTENT : Int = 206
+
+pub const HTTP_207_MULTI_STATUS : Int = 207
+
+pub const HTTP_208_ALREADY_REPORTED : Int = 208
+
+pub const HTTP_226_IM_USED : Int = 226
+
+pub const HTTP_300_MULTIPLE_CHOICES : Int = 300
+
+pub const HTTP_301_MOVED_PERMANENTLY : Int = 301
+
+pub const HTTP_302_FOUND : Int = 302
+
+pub const HTTP_303_SEE_OTHER : Int = 303
+
+pub const HTTP_304_NOT_MODIFIED : Int = 304
+
+pub const HTTP_305_USE_PROXY : Int = 305
+
+pub const HTTP_306_RESERVED : Int = 306
+
+pub const HTTP_307_TEMPORARY_REDIRECT : Int = 307
+
+pub const HTTP_308_PERMANENT_REDIRECT : Int = 308
+
+pub const HTTP_400_BAD_REQUEST : Int = 400
+
+pub const HTTP_401_UNAUTHORIZED : Int = 401
+
+pub const HTTP_402_PAYMENT_REQUIRED : Int = 402
+
+pub const HTTP_403_FORBIDDEN : Int = 403
+
+pub const HTTP_404_NOT_FOUND : Int = 404
+
+pub const HTTP_405_METHOD_NOT_ALLOWED : Int = 405
+
+pub const HTTP_406_NOT_ACCEPTABLE : Int = 406
+
+pub const HTTP_407_PROXY_AUTHENTICATION_REQUIRED : Int = 407
+
+pub const HTTP_408_REQUEST_TIMEOUT : Int = 408
+
+pub const HTTP_409_CONFLICT : Int = 409
+
+pub const HTTP_410_GONE : Int = 410
+
+pub const HTTP_411_LENGTH_REQUIRED : Int = 411
+
+pub const HTTP_412_PRECONDITION_FAILED : Int = 412
+
+pub const HTTP_413_REQUEST_ENTITY_TOO_LARGE : Int = 413
+
+pub const HTTP_414_REQUEST_URI_TOO_LONG : Int = 414
+
+pub const HTTP_415_UNSUPPORTED_MEDIA_TYPE : Int = 415
+
+pub const HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE : Int = 416
+
+pub const HTTP_417_EXPECTATION_FAILED : Int = 417
+
+pub const HTTP_418_IM_A_TEAPOT : Int = 418
+
+pub const HTTP_421_MISDIRECTED_REQUEST : Int = 421
+
+pub const HTTP_422_UNPROCESSABLE_ENTITY : Int = 422
+
+pub const HTTP_423_LOCKED : Int = 423
+
+pub const HTTP_424_FAILED_DEPENDENCY : Int = 424
+
+pub const HTTP_425_TOO_EARLY : Int = 425
+
+pub const HTTP_426_UPGRADE_REQUIRED : Int = 426
+
+pub const HTTP_428_PRECONDITION_REQUIRED : Int = 428
+
+pub const HTTP_429_TOO_MANY_REQUESTS : Int = 429
+
+pub const HTTP_431_REQUEST_HEADER_FIELDS_TOO_LARGE : Int = 431
+
+pub const HTTP_451_UNAVAILABLE_FOR_LEGAL_REASONS : Int = 451
+
+pub const HTTP_500_INTERNAL_SERVER_ERROR : Int = 500
+
+pub const HTTP_501_NOT_IMPLEMENTED : Int = 501
+
+pub const HTTP_502_BAD_GATEWAY : Int = 502
+
+pub const HTTP_503_SERVICE_UNAVAILABLE : Int = 503
+
+pub const HTTP_504_GATEWAY_TIMEOUT : Int = 504
+
+pub const HTTP_505_HTTP_VERSION_NOT_SUPPORTED : Int = 505
+
+pub const HTTP_506_VARIANT_ALSO_NEGOTIATES : Int = 506
+
+pub const HTTP_507_INSUFFICIENT_STORAGE : Int = 507
+
+pub const HTTP_508_LOOP_DETECTED : Int = 508
+
+pub const HTTP_510_NOT_EXTENDED : Int = 510
+
+pub const HTTP_511_NETWORK_AUTHENTICATION_REQUIRED : Int = 511
+
+pub const WS_1000_NORMAL_CLOSURE : Int = 1000
+
+pub const WS_1001_GOING_AWAY : Int = 1001
+
+pub const WS_1002_PROTOCOL_ERROR : Int = 1002
+
+pub const WS_1003_UNSUPPORTED_DATA : Int = 1003
+
+pub const WS_1005_NO_STATUS_RCVD : Int = 1005
+
+pub const WS_1006_ABNORMAL_CLOSURE : Int = 1006
+
+pub const WS_1007_INVALID_FRAME_PAYLOAD_DATA : Int = 1007
+
+pub const WS_1008_POLICY_VIOLATION : Int = 1008
+
+pub const WS_1009_MESSAGE_TOO_BIG : Int = 1009
+
+pub const WS_1010_MANDATORY_EXT : Int = 1010
+
+pub const WS_1011_INTERNAL_ERROR : Int = 1011
+
+pub const WS_1012_SERVICE_RESTART : Int = 1012
+
+pub const WS_1013_TRY_AGAIN_LATER : Int = 1013
+
+pub const WS_1014_BAD_GATEWAY : Int = 1014
+
+pub const WS_1015_TLS_HANDSHAKE : Int = 1015
+
 pub fn base64url_decode(String) -> Bytes
 
 pub fn base64url_encode(Bytes) -> String
@@ -19,6 +175,8 @@ pub fn constant_time_eq(Bytes, Bytes) -> Bool
 pub fn cors(allow_origins? : Array[String], allow_all_origins? : Bool, allow_methods? : Array[String], allow_headers? : Array[String], allow_all_headers? : Bool, allow_credentials? : Bool, expose_headers? : Array[String], max_age? : Int) -> ((@moonasgi.Request) -> @moonasgi.Response) -> (@moonasgi.Request) -> @moonasgi.Response
 
 pub fn create_access_token(String, String, Int64, scopes? : Array[String], expires_in_secs? : Int64, extra? : Map[String, Json]) -> String
+
+pub fn delete_cookie(@moonasgi.Response, String, path? : String, domain? : String, secure? : Bool, http_only? : Bool, same_site? : SameSite?) -> @moonasgi.Response
 
 pub fn demo_app() -> App
 
@@ -33,6 +191,8 @@ pub fn ed25519_public_from_seed(Bytes) -> Bytes
 pub fn ed25519_sign(Bytes, Bytes) -> Bytes
 
 pub fn ed25519_verify(Bytes, Bytes, Bytes) -> Bool
+
+pub fn file_response(Bytes, filename? : String, media_type? : String, status? : Int, inline? : Bool) -> @moonasgi.Response
 
 pub fn filter_response(Schema, Json) -> Result[Json, Array[ValidationError]]
 
@@ -72,6 +232,8 @@ pub fn oauth2_app(() -> Int64, secret? : String) -> App
 
 pub fn parse_basic_auth(String) -> HttpBasicCredentials?
 
+pub fn redirect(String, status? : Int) -> @moonasgi.Response
+
 pub fn redoc_ui(spec_url? : String, title? : String) -> String
 
 pub fn rsa_pkcs1_sha256_sign(Bytes, RsaPrivateKey) -> Bytes
@@ -80,11 +242,13 @@ pub fn rsa_pkcs1_sha256_verify(Bytes, Bytes, RsaPublicKey) -> Bool
 
 pub fn[T : ToSchema] schema_of(T) -> Schema
 
+pub fn set_cookie(@moonasgi.Response, String, String, max_age? : Int, expires? : String, path? : String, domain? : String, secure? : Bool, http_only? : Bool, same_site? : SameSite?) -> @moonasgi.Response
+
 pub fn sha256(Bytes) -> Bytes
 
 pub fn sha512(Bytes) -> Bytes
 
-pub fn sse_response(Array[ServerSentEvent], status? : Int, headers? : Array[(String, String)]) -> @moonasgi.Response
+pub fn sse_response(Array[ServerSentEvent], status? : Int, headers? : Array[(String, String)]) -> @moonasgi.StreamingResponse
 
 pub fn swagger_ui(spec_url? : String, title? : String) -> String
 
@@ -140,7 +304,7 @@ pub struct App {
   security_schemes : Array[(String, SecurityScheme)]
   enforcers : Map[String, (Context, Array[String], Int64) -> Result[AuthenticatedUser, @moonasgi.Response]]
   status_handlers : Map[Int, (Context) -> @moonasgi.Response]
-  mounts : Array[(String, App)]
+  mounts : Array[(String, Mount)]
   startup_hooks : Array[() -> Unit raise]
   shutdown_hooks : Array[() -> Unit raise]
   mut info : ApiInfo
@@ -148,29 +312,35 @@ pub struct App {
 }
 pub fn App::add_security_scheme(Self, String, SecurityScheme) -> Unit
 pub fn App::add_status_handler(Self, Int, (Context) -> @moonasgi.Response) -> Unit
-pub fn App::delete(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, tags? : Array[String], deprecated? : Bool, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool) -> Unit
+pub fn App::delete(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
 pub fn App::describe(Self, title? : String, api_version? : String, description? : String, terms_of_service? : String, contact? : Contact?, license? : License?, servers? : Array[Server]) -> Unit
 pub fn App::enable_docs(Self, openapi_url? : String?, docs_url? : String?, redoc_url? : String?, version? : OpenApiVersion) -> Unit
 pub fn App::exception_handler(Self, (Context, Error) -> @moonasgi.Response?) -> Unit
-pub fn App::get(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, tags? : Array[String], deprecated? : Bool, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool) -> Unit
+pub fn App::get(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
 pub fn App::handle(Self, @moonasgi.Request) -> @moonasgi.Response
 pub fn App::handle_with_background(Self, @moonasgi.Request) -> (@moonasgi.Response, BackgroundTasks)
+pub fn App::handle_with_stream(Self, @moonasgi.Request) -> (@moonasgi.StreamingResponse, BackgroundTasks)
+pub fn App::include_router(Self, Router, prefix? : String, tags? : Array[String], security? : Array[SecurityRequirement], responses? : Array[ResponseSpec], deprecated? : Bool, include_in_schema? : Bool) -> Unit
 pub fn App::lifespan_handler(Self) -> @moonasgi.LifespanHandler
 pub fn App::middleware(Self, ((@moonasgi.Request) -> @moonasgi.Response) -> (@moonasgi.Request) -> @moonasgi.Response) -> Unit
 pub fn App::mount(Self, String, Self) -> Unit
+pub fn App::mount_handler(Self, String, (@moonasgi.Request) -> @moonasgi.Response) -> Unit
 pub fn App::new() -> Self
 pub fn App::on_shutdown(Self, () -> Unit raise) -> Unit
 pub fn App::on_startup(Self, () -> Unit raise) -> Unit
 pub fn App::openapi(Self, version? : OpenApiVersion, title? : String, api_version? : String, description? : String, terms_of_service? : String, contact? : Contact?, license? : License?, servers? : Array[Server]) -> Json
 pub fn App::openapi_json(Self, version? : OpenApiVersion) -> String
-pub fn App::patch(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, tags? : Array[String], deprecated? : Bool, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool) -> Unit
-pub fn App::post(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, tags? : Array[String], deprecated? : Bool, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool) -> Unit
-pub fn App::put(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, tags? : Array[String], deprecated? : Bool, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool) -> Unit
-pub fn App::route(Self, Method, String, (Context) -> @moonasgi.Response raise, summary? : String, tags? : Array[String], deprecated? : Bool, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool) -> Unit
-pub fn App::route_bg(Self, Method, String, (Context, BackgroundTasks) -> @moonasgi.Response raise, summary? : String, tags? : Array[String], deprecated? : Bool, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool) -> Unit
+pub fn App::patch(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn App::post(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn App::put(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn App::route(Self, Method, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn App::route_bg(Self, Method, String, (Context, BackgroundTasks) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn App::route_stream(Self, Method, String, (Context) -> @moonasgi.StreamingResponse raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
 pub fn App::secure_oauth2(Self, String, OAuth2PasswordBearer, scopes? : Array[(String, String)]) -> Unit
 pub fn App::set_clock(Self, () -> Int64) -> Unit
+pub fn App::stream(Self, String, (Context) -> @moonasgi.StreamingResponse raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
 pub fn App::to_asgi(Self) -> async (@moonasgi.Scope, async () -> @moonasgi.Event, async (@moonasgi.Event) -> Unit) -> Unit
+pub fn App::url_for(Self, String, params? : Map[String, String]) -> String?
 pub fn App::websocket(Self, String, (WebSocket) -> Unit) -> Unit
 
 pub(all) struct AuthenticatedUser {
@@ -232,7 +402,7 @@ pub fn[T : @json.FromJson] Context::body(Self) -> T?
 pub fn Context::body_json(Self) -> Json?
 pub fn[T : @json.FromJson] Context::body_validated(Self, Schema) -> Result[T, Array[ValidationError]]
 pub fn Context::cookie(Self, String) -> String?
-pub fn Context::form(Self) -> FormData
+pub fn Context::form(Self, limits? : FormLimits) -> FormData?
 pub fn Context::http_basic(Self) -> HttpBasicCredentials?
 pub fn Context::json_field(Self, String) -> Json?
 pub fn Context::oauth2_password_form(Self) -> OAuth2PasswordRequestForm?
@@ -309,6 +479,12 @@ pub(all) struct FormField {
   value : String
 } derive(Eq)
 
+pub(all) struct FormLimits {
+  max_parts : Int
+  max_part_size : Int
+} derive(Eq)
+pub fn FormLimits::new(max_parts? : Int, max_part_size? : Int) -> Self
+
 pub(all) struct GreetReq {
   name : String
 } derive(Eq, ToJson, @json.FromJson)
@@ -333,6 +509,8 @@ pub(all) enum Method {
   Head
   Options
 } derive(Eq)
+
+type Mount
 
 pub(all) struct NewUser {
   name : String
@@ -403,6 +581,21 @@ pub fn ResponseSpec::new(Int, description? : String, body? : Schema?) -> Self
 
 type Route
 
+pub struct Router {
+  routes : Array[Route]
+  ws_routes : Array[WsRoute]
+}
+pub fn Router::delete(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn Router::get(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn Router::new() -> Self
+pub fn Router::patch(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn Router::post(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn Router::put(Self, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn Router::route(Self, Method, String, (Context) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn Router::route_bg(Self, Method, String, (Context, BackgroundTasks) -> @moonasgi.Response raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn Router::stream(Self, String, (Context) -> @moonasgi.StreamingResponse raise, summary? : String, description? : String, tags? : Array[String], deprecated? : Bool, operation_id? : String, status_code? : Int, responses? : Array[ResponseSpec], name? : String, endpoint? : Endpoint?, security? : Array[SecurityRequirement], include_in_schema? : Bool, validate? : Bool, openapi_extra? : Json) -> Unit
+pub fn Router::websocket(Self, String, (WebSocket) -> Unit) -> Unit
+
 pub(all) struct RsaPrivateKey {
   n : @bigint.BigInt
   e : @bigint.BigInt
@@ -416,6 +609,12 @@ pub(all) struct RsaPublicKey {
   e : @bigint.BigInt
 }
 pub fn RsaPublicKey::from_hex(String, String) -> Self
+
+pub(all) enum SameSite {
+  Strict
+  Lax
+  Unrestricted
+} derive(Eq)
 
 pub(all) enum Schema {
   SStr
@@ -476,7 +675,10 @@ pub(all) struct UploadFile {
   filename : String
   content_type : String
   content : Bytes
+  headers : Array[(String, String)]
 } derive(Eq)
+pub fn UploadFile::header(Self, String) -> String?
+pub fn UploadFile::size(Self) -> Int
 
 pub(all) struct User {
   id : Int
@@ -528,6 +730,8 @@ pub type ApiHandler = (Context) -> @moonasgi.Response raise
 pub type BackgroundHandler = (Context, BackgroundTasks) -> @moonasgi.Response raise
 
 pub type ExceptionHandler = (Context, Error) -> @moonasgi.Response?
+
+pub type StreamHandler = (Context) -> @moonasgi.StreamingResponse raise
 
 pub type WsHandler = (WebSocket) -> Unit
 

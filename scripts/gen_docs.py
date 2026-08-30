@@ -9,6 +9,10 @@ SECTIONS = [
     ("app", "app.mbt", "Application & routing",
      "The App, its route builders (get / post / ...), :param path matching, the "
      "Context, and text / json response helpers - plus App::to_asgi to run anywhere."),
+    ("router", "router.mbt", "Routers & composition",
+     "APIRouter and include_router - routes collected away from any application "
+     "and folded into one later, under a prefix and with the tags, security and "
+     "responses the whole group shares. Plus mounting a foreign moonasgi handler."),
     ("schema", "schema.mbt", "Descriptor tree",
      "The runtime Schema descriptor - the first-class value that stands in for "
      "FastAPI's from-signature reflection. Walked once to emit complete OpenAPI "
@@ -90,6 +94,17 @@ SECTIONS = [
      "filter_response / json_model validate a handler's return value against a "
      "declared Schema and project it down to exactly the model's fields, so a route "
      "exposes only what it promised - FastAPI's response_model."),
+    ("response", "response.mbt", "Redirects & file downloads",
+     "The response kinds that are an envelope rather than a body: redirect (the "
+     "status and a percent-encoded Location) and file_response (a media type from "
+     "the filename, Content-Length, and an RFC 6266 Content-Disposition)."),
+    ("cookie", "cookie.mbt", "Cookies",
+     "set_cookie and delete_cookie - one Set-Cookie header per cookie, attributes "
+     "in RFC 6265 order, values stripped of the octets that could forge an "
+     "attribute or open a header, and an expiry a browser honours either way."),
+    ("status", "status.mbt", "Status codes",
+     "The 63 HTTP_* and 15 WS_* constants FastAPI re-exports from Starlette, so a "
+     "route reads HTTP_404_NOT_FOUND rather than a bare number."),
     ("demo", "demo.mbt", "Worked example",
      "User structs that describe their own schema (derive(ToJson) + a T::schema() "
      "associated function + a ToSchema bridge) and a demo app whose request and "

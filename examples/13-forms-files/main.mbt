@@ -5,13 +5,23 @@
 /// boundary. `FormData::field` reads the first value, `field_all` every value a
 /// repeated field submitted, and `file` an `UploadFile` — filename, content-type,
 /// and the raw bytes byte-for-byte, so a binary upload survives untouched.
+/// `FormLimits` bounds what a sender may spend: a body over the limit comes back
+/// as `None` and is answered `413` rather than parsed.
 ///
 ///     moon run examples/13-forms-files
 #coverage.skip
 fn main {
   let app = @moonapi.App::new()
   app.post("/upload", ctx => {
-    let form = ctx.form()
+    // A title and three tags is the whole of this form, so more is not it.
+    let form = match ctx.form(limits=@moonapi.FormLimits::new(max_parts=4)) {
+      Some(f) => f
+      None =>
+        return @moonapi.text(
+          @moonapi.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+          "too many form parts",
+        )
+    }
     let title = form.field("title").unwrap_or("-")
     let tags = form.field_all("tag")
     match form.file("doc") {
@@ -60,6 +70,13 @@ fn main {
   // The multipart grammar is CRLF-delimited; the raw string above is LF-only.
   let crlf_body = @utf8.encode(to_crlf(multipart))
   post("multipart", "multipart/form-data; boundary=" + boundary, crlf_body)
+
+  // 3. A fifth pair is over the limit, and the form is refused whole.
+  post(
+    "over-limit",
+    "application/x-www-form-urlencoded",
+    @utf8.encode("title=a&tag=b&tag=c&tag=d&tag=e"),
+  )
 }
 
 ///|

@@ -47,11 +47,16 @@ fn split_scopes(s : String) -> Array[String] {
 ///|
 /// Read an `OAuth2PasswordRequestForm` off the request's urlencoded (or
 /// multipart) body. `None` when neither `username` nor `password` is present —
-/// the body isn't a password-grant form at all.
+/// the body isn't a password-grant form at all — and equally when the body is
+/// too large to be one, since a grant carries six fields and nothing that big
+/// is a login.
 pub fn Context::oauth2_password_form(
   self : Context,
 ) -> OAuth2PasswordRequestForm? {
-  let form = self.form()
+  let form = match self.form() {
+    Some(f) => f
+    None => return None
+  }
   let username = form.field("username")
   let password = form.field("password")
   match (username, password) {

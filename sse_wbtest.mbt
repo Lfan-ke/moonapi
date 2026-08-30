@@ -28,16 +28,50 @@ test "sse: a keep-alive is a comment with no data line" {
 }
 
 ///|
-test "sse: response carries the event-stream headers and framed body" {
+test "sse: response carries the event-stream headers and one chunk per event" {
   let resp = sse_response([
     ServerSentEvent::data("one"),
     ServerSentEvent::new("two", id=Some("2")),
   ])
   assert_eq(resp.status, 200)
   assert_eq(
-    resp.header("content-type"),
+    header_of(resp.headers, "content-type"),
     Some("text/event-stream; charset=utf-8"),
   )
-  assert_eq(resp.header("cache-control"), Some("no-cache"))
-  assert_eq(resp.body, @utf8.encode("data: one\n\nid: 2\ndata: two\n\n"))
+  assert_eq(header_of(resp.headers, "cache-control"), Some("no-cache"))
+  // Streamed, not buffered: two events are two chunks, and each is one whole
+  // frame. Concatenated they are the body the old buffering version produced —
+  // the bytes did not change, only where they are allowed to be cut.
+  assert_eq(resp.chunks.length(), 2)
+  assert_eq(resp.chunks[0], @utf8.encode("data: one\n\n"))
+  assert_eq(resp.chunks[1], @utf8.encode("id: 2\ndata: two\n\n"))
+}
+
+///|
+/// The lowered wire form: a reader gets each frame as its own body event, and
+/// only the last says the stream is over.
+test "sse: each frame is its own body event, only the last ends the stream" {
+  let events = sse_response([
+    ServerSentEvent::data("one"),
+    ServerSentEvent::data("two"),
+    ServerSentEvent::data("three"),
+  ]).events()
+  let bodies = events.filter(e => e is HttpResponseBody(_))
+  assert_eq(bodies.length(), 3)
+  assert_eq(
+    bodies[0] ==
+    @moonasgi.Event::HttpResponseBody(
+      body=@utf8.encode("data: one\n\n"),
+      more_body=true,
+    ),
+    true,
+  )
+  assert_eq(
+    bodies[2] ==
+    @moonasgi.Event::HttpResponseBody(
+      body=@utf8.encode("data: three\n\n"),
+      more_body=false,
+    ),
+    true,
+  )
 }

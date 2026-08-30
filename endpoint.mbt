@@ -194,12 +194,14 @@ fn response_json(
 /// Fill the operation object `op` from an endpoint descriptor for `version`,
 /// hoisting named schemas into `defs`. Emits `parameters`, `requestBody` (or a
 /// body parameter in 2.0), and `responses`; an endpoint with no declared
-/// responses gets a default `200 OK`.
+/// responses gets a default `OK` under `ok_status`, which is the route's
+/// `status_code` or `200`.
 fn emit_endpoint(
   op : Map[String, Json],
   ep : Endpoint,
   defs : Map[String, Json],
   version : OpenApiVersion,
+  ok_status : Int,
 ) -> Unit {
   let params : Array[Json] = []
   for p in ep.params {
@@ -216,7 +218,7 @@ fn emit_endpoint(
   let specs = if ep.responses.length() > 0 {
     ep.responses
   } else {
-    [ResponseSpec::new(200)]
+    [ResponseSpec::new(ok_status)]
   }
   let responses : Map[String, Json] = Map([])
   for rs in specs {

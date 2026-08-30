@@ -82,6 +82,23 @@ pub type ApiHandler = (Context) -> @moonasgi.Response raise
 pub type BackgroundHandler = (Context, BackgroundTasks) -> @moonasgi.Response raise
 
 ///|
+/// A streaming route's handler: request context in, a chunked response out (←
+/// returning a `StreamingResponse` from a FastAPI path operation). Every chunk
+/// becomes one body event on the wire, so a client reads the first long before
+/// the last one exists — the point of streaming, and what a single buffered
+/// `Response` cannot express.
+pub type StreamHandler = (Context) -> @moonasgi.StreamingResponse raise
+
+///|
+/// What a route produced. Two kinds because moonasgi types a buffered response
+/// and a chunked one differently, and the difference has to survive as far as
+/// `to_asgi`, which is the only place that can put chunks on the wire.
+priv enum Reply {
+  Buffered(@moonasgi.Response)
+  Streamed(@moonasgi.StreamingResponse)
+}
+
+///|
 /// A route stores one background-aware handler; a plain `ApiHandler` is wrapped
 /// to ignore the queue. `security` is the per-operation requirements (emitted as
 /// OpenAPI `security` and enforced before the handler when their scheme has an
@@ -89,10 +106,25 @@ pub type BackgroundHandler = (Context, BackgroundTasks) -> @moonasgi.Response ra
 struct Route {
   verb : Method
   path : String
-  run : BackgroundHandler
+  run : (Context, BackgroundTasks) -> Reply raise
   summary : String
+  description : String
   tags : Array[String]
   deprecated : Bool
+  operation_id : String
+  // The status the success response is documented under. Documentation only: the
+  // handler builds its own response, and rewriting the status it chose would make
+  // the app disagree with itself rather than with the spec.
+  status_code : Int?
+  // Documented alongside whatever the endpoint descriptor produced, and written
+  // after it, so the status a route names here is the one that stands.
+  responses : Array[ResponseSpec]
+  // The handle `App::url_for` looks the route up by. Empty means unnamed, and an
+  // unnamed route is not addressable.
+  name : String
+  // Merged into the operation object last, so it can override anything moonapi
+  // generated (← FastAPI's `openapi_extra`).
+  openapi_extra : Json?
   endpoint : Endpoint?
   security : Array[SecurityRequirement]
   // FastAPI's `include_in_schema`: a route that serves the documentation itself has
@@ -102,6 +134,15 @@ struct Route {
   // default: a route that advertises constraints in its documentation and does not
   // apply them is worse than one that declares nothing.
   validate : Bool
+}
+
+///|
+/// What a mount prefix routes to: a moonapi sub-application, whose routes,
+/// security schemes and lifespan hooks fold into the parent's, or a foreign
+/// moonasgi handler, which the parent can only forward requests to.
+enum Mount {
+  Sub(App)
+  Asgi(@moonasgi.Handler)
 }
 
 ///|
@@ -118,7 +159,7 @@ pub struct App {
   security_schemes : Array[(String, SecurityScheme)]
   enforcers : Map[String, SecurityEnforcer]
   status_handlers : Map[Int, (Context) -> @moonasgi.Response]
-  mounts : Array[(String, App)]
+  mounts : Array[(String, Mount)]
   // Run in registration order when the server starts, and in reverse when it stops,
   // so a resource is torn down before whatever it was built on.
   startup_hooks : Array[() -> Unit raise]
@@ -238,26 +279,45 @@ pub fn App::add_security_scheme(
 /// surface in the OpenAPI document and drive validation); `security` attaches
 /// per-operation requirements (emitted as OpenAPI `security` and enforced before
 /// the handler when their scheme has an enforcer).
+///
+/// The rest describe the operation: `summary` and `description` are its prose,
+/// `operation_id` the stable handle client generators name their method after,
+/// `status_code` the status its success response is documented under,
+/// `responses` further documented responses, `name` the handle `App::url_for`
+/// resolves, and `openapi_extra` a fragment merged over the generated operation
+/// object — the same keyword arguments FastAPI's path operations take.
 pub fn App::route(
   self : App,
   verb : Method,
   path : String,
   handler : ApiHandler,
   summary? : String = "",
+  description? : String = "",
   tags? : Array[String] = [],
   deprecated? : Bool = false,
+  operation_id? : String = "",
+  status_code? : Int,
+  responses? : Array[ResponseSpec] = [],
+  name? : String = "",
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
   include_in_schema? : Bool = true,
   validate? : Bool = true,
+  openapi_extra? : Json,
 ) -> Unit {
   self.routes.push({
     verb,
     path,
-    run: (ctx, _bg) => handler(ctx),
+    run: (ctx, _bg) => Buffered(handler(ctx)),
     summary,
+    description,
     tags,
     deprecated,
+    operation_id,
+    status_code,
+    responses,
+    name,
+    openapi_extra,
     endpoint,
     security,
     include_in_schema,
@@ -275,25 +335,127 @@ pub fn App::route_bg(
   path : String,
   handler : BackgroundHandler,
   summary? : String = "",
+  description? : String = "",
   tags? : Array[String] = [],
   deprecated? : Bool = false,
+  operation_id? : String = "",
+  status_code? : Int,
+  responses? : Array[ResponseSpec] = [],
+  name? : String = "",
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
   include_in_schema? : Bool = true,
   validate? : Bool = true,
+  openapi_extra? : Json,
 ) -> Unit {
   self.routes.push({
     verb,
     path,
-    run: handler,
+    run: (ctx, bg) => Buffered(handler(ctx, bg)),
     summary,
+    description,
     tags,
     deprecated,
+    operation_id,
+    status_code,
+    responses,
+    name,
+    openapi_extra,
     endpoint,
     security,
     include_in_schema,
     validate,
   })
+}
+
+///|
+/// Register a streaming route (← a FastAPI path operation returning a
+/// `StreamingResponse`). The handler's chunks reach the client as separate body
+/// events, so a long or open-ended reply starts arriving before it is finished.
+///
+/// A stream is only streamed as far as the app can honestly keep it one: moonasgi
+/// types a middleware as buffered response in, buffered response out, so a
+/// middleware that rewrites the body — `gzip` does — collapses the reply to a
+/// single chunk. Everything else about the route is ordinary; it documents,
+/// validates and enforces security exactly as `route` does.
+pub fn App::route_stream(
+  self : App,
+  verb : Method,
+  path : String,
+  handler : StreamHandler,
+  summary? : String = "",
+  description? : String = "",
+  tags? : Array[String] = [],
+  deprecated? : Bool = false,
+  operation_id? : String = "",
+  status_code? : Int,
+  responses? : Array[ResponseSpec] = [],
+  name? : String = "",
+  endpoint? : Endpoint? = None,
+  security? : Array[SecurityRequirement] = [],
+  include_in_schema? : Bool = true,
+  validate? : Bool = true,
+  openapi_extra? : Json,
+) -> Unit {
+  self.routes.push({
+    verb,
+    path,
+    run: (ctx, _bg) => Streamed(handler(ctx)),
+    summary,
+    description,
+    tags,
+    deprecated,
+    operation_id,
+    status_code,
+    responses,
+    name,
+    openapi_extra,
+    endpoint,
+    security,
+    include_in_schema,
+    validate,
+  })
+}
+
+///|
+/// Register a streaming `GET` route — the verb a stream is nearly always read
+/// over, and what an SSE endpoint is. A shorthand for `route_stream(Get, ...)`.
+pub fn App::stream(
+  self : App,
+  path : String,
+  handler : StreamHandler,
+  summary? : String = "",
+  description? : String = "",
+  tags? : Array[String] = [],
+  deprecated? : Bool = false,
+  operation_id? : String = "",
+  status_code? : Int,
+  responses? : Array[ResponseSpec] = [],
+  name? : String = "",
+  endpoint? : Endpoint? = None,
+  security? : Array[SecurityRequirement] = [],
+  include_in_schema? : Bool = true,
+  validate? : Bool = true,
+  openapi_extra? : Json,
+) -> Unit {
+  self.route_stream(
+    Get,
+    path,
+    handler,
+    summary~,
+    description~,
+    tags~,
+    deprecated~,
+    operation_id~,
+    status_code?,
+    responses~,
+    name~,
+    endpoint~,
+    security~,
+    include_in_schema~,
+    validate~,
+    openapi_extra?,
+  )
 }
 
 ///|
@@ -304,24 +466,36 @@ pub fn App::get(
   path : String,
   handler : ApiHandler,
   summary? : String = "",
+  description? : String = "",
   tags? : Array[String] = [],
   deprecated? : Bool = false,
+  operation_id? : String = "",
+  status_code? : Int,
+  responses? : Array[ResponseSpec] = [],
+  name? : String = "",
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
   include_in_schema? : Bool = true,
   validate? : Bool = true,
+  openapi_extra? : Json,
 ) -> Unit {
   self.route(
     Get,
     path,
     handler,
     summary~,
+    description~,
     tags~,
     deprecated~,
+    operation_id~,
+    status_code?,
+    responses~,
+    name~,
     endpoint~,
     security~,
     include_in_schema~,
     validate~,
+    openapi_extra?,
   )
 }
 
@@ -377,24 +551,36 @@ pub fn App::post(
   path : String,
   handler : ApiHandler,
   summary? : String = "",
+  description? : String = "",
   tags? : Array[String] = [],
   deprecated? : Bool = false,
+  operation_id? : String = "",
+  status_code? : Int,
+  responses? : Array[ResponseSpec] = [],
+  name? : String = "",
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
   include_in_schema? : Bool = true,
   validate? : Bool = true,
+  openapi_extra? : Json,
 ) -> Unit {
   self.route(
     Post,
     path,
     handler,
     summary~,
+    description~,
     tags~,
     deprecated~,
+    operation_id~,
+    status_code?,
+    responses~,
+    name~,
     endpoint~,
     security~,
     include_in_schema~,
     validate~,
+    openapi_extra?,
   )
 }
 
@@ -405,24 +591,36 @@ pub fn App::put(
   path : String,
   handler : ApiHandler,
   summary? : String = "",
+  description? : String = "",
   tags? : Array[String] = [],
   deprecated? : Bool = false,
+  operation_id? : String = "",
+  status_code? : Int,
+  responses? : Array[ResponseSpec] = [],
+  name? : String = "",
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
   include_in_schema? : Bool = true,
   validate? : Bool = true,
+  openapi_extra? : Json,
 ) -> Unit {
   self.route(
     Put,
     path,
     handler,
     summary~,
+    description~,
     tags~,
     deprecated~,
+    operation_id~,
+    status_code?,
+    responses~,
+    name~,
     endpoint~,
     security~,
     include_in_schema~,
     validate~,
+    openapi_extra?,
   )
 }
 
@@ -433,24 +631,36 @@ pub fn App::patch(
   path : String,
   handler : ApiHandler,
   summary? : String = "",
+  description? : String = "",
   tags? : Array[String] = [],
   deprecated? : Bool = false,
+  operation_id? : String = "",
+  status_code? : Int,
+  responses? : Array[ResponseSpec] = [],
+  name? : String = "",
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
   include_in_schema? : Bool = true,
   validate? : Bool = true,
+  openapi_extra? : Json,
 ) -> Unit {
   self.route(
     Patch,
     path,
     handler,
     summary~,
+    description~,
     tags~,
     deprecated~,
+    operation_id~,
+    status_code?,
+    responses~,
+    name~,
     endpoint~,
     security~,
     include_in_schema~,
     validate~,
+    openapi_extra?,
   )
 }
 
@@ -461,24 +671,36 @@ pub fn App::delete(
   path : String,
   handler : ApiHandler,
   summary? : String = "",
+  description? : String = "",
   tags? : Array[String] = [],
   deprecated? : Bool = false,
+  operation_id? : String = "",
+  status_code? : Int,
+  responses? : Array[ResponseSpec] = [],
+  name? : String = "",
   endpoint? : Endpoint? = None,
   security? : Array[SecurityRequirement] = [],
   include_in_schema? : Bool = true,
   validate? : Bool = true,
+  openapi_extra? : Json,
 ) -> Unit {
   self.route(
     Delete,
     path,
     handler,
     summary~,
+    description~,
     tags~,
     deprecated~,
+    operation_id~,
+    status_code?,
+    responses~,
+    name~,
     endpoint~,
     security~,
     include_in_schema~,
     validate~,
+    openapi_extra?,
   )
 }
 
@@ -522,7 +744,23 @@ pub fn App::add_status_handler(
 /// and the sub-app's routes appear under `prefix` in the merged OpenAPI document
 /// with its security schemes folded into the parent's.
 pub fn App::mount(self : App, prefix : String, subapp : App) -> Unit {
-  self.mounts.push((prefix, subapp))
+  self.mounts.push((prefix, Sub(subapp)))
+}
+
+///|
+/// Mount a foreign moonasgi handler under `prefix` (← FastAPI mounting a plain
+/// ASGI app, `app.mount("/static", StaticFiles(...))`). A request under `prefix`
+/// is handed to `handler` with the prefix stripped, exactly as for a sub-app.
+///
+/// A handler is not a moonapi application, so it contributes nothing to the
+/// OpenAPI document and has no lifespan of its own to run — the app only routes
+/// to it. Mounts are tried in registration order, whichever kind they are.
+pub fn App::mount_handler(
+  self : App,
+  prefix : String,
+  handler : @moonasgi.Handler,
+) -> Unit {
+  self.mounts.push((prefix, Asgi(handler)))
 }
 
 ///|
@@ -560,6 +798,56 @@ fn match_path(pattern : String, path : String) -> Map[String, String]? {
     }
   }
   Some(params)
+}
+
+///|
+/// Fill a route pattern's `:name` segments from `params`, the inverse of
+/// `match_path`. `None` when the pattern needs a parameter `params` does not
+/// carry — half a URL is worse than none.
+fn render_path(pattern : String, params : Map[String, String]) -> String? {
+  let sb = StringBuilder()
+  for seg in segments(pattern) {
+    sb.write_string("/")
+    if seg.length() > 0 && seg[0] == ':' {
+      match params.get(seg[1:].to_owned()) {
+        Some(v) => sb.write_string(v)
+        None => return None
+      }
+    } else {
+      sb.write_string(seg)
+    }
+  }
+  let rendered = sb.to_string()
+  Some(if rendered == "" { "/" } else { rendered })
+}
+
+///|
+/// The path of the route registered under `name`, with its `:name` segments
+/// filled from `params` (← FastAPI's `url_path_for`). Mounted sub-applications
+/// are searched too, so what comes back already carries the mount prefix — the
+/// path a client would call, not the one the sub-app knows itself by.
+///
+/// `None` when nothing is registered under that name, or when `params` is
+/// missing one the path needs. Values are substituted as given: a value with a
+/// `/` in it lands as extra path segments, so encode before calling if that
+/// matters.
+pub fn App::url_for(
+  self : App,
+  name : String,
+  params? : Map[String, String] = Map([]),
+) -> String? {
+  // Every route starts out unnamed, so an empty name would match the first one.
+  if name == "" {
+    return None
+  }
+  let all : Array[(String, Route)] = []
+  self.collect_routes("", all)
+  for entry in all {
+    if entry.1.name == name {
+      return render_path(entry.0, params)
+    }
+  }
+  None
 }
 
 ///|
@@ -668,10 +956,15 @@ fn App::enforce_security(
 /// matched but no method) or 404 (no path). `bg` is the request's background
 /// queue, handed to the matched handler and drained by the caller after the
 /// response is sent.
+///
+/// The chain around this is typed in buffered responses, so a streaming route's
+/// chunks are left in `stream` on the way past and the buffered join is what
+/// travels through the middleware.
 fn App::route_and_dispatch(
   self : App,
   request : @moonasgi.Request,
   bg : BackgroundTasks,
+  stream : Ref[@moonasgi.StreamingResponse?],
 ) -> @moonasgi.Response {
   let verb = parse_method(request.http_method)
   let allowed : Array[String] = []
@@ -693,10 +986,24 @@ fn App::route_and_dispatch(
               return self.apply_status(ctx, unprocessable(errs))
             }
           }
-          let resp = (route.run)(ctx, bg) catch {
-            e => self.dispatch_exception(ctx, e)
+          let reply = (route.run)(ctx, bg) catch {
+            e => Buffered(self.dispatch_exception(ctx, e))
+          }
+          let resp = match reply {
+            Buffered(r) => r
+            Streamed(s) => {
+              stream.val = Some(s)
+              @moonasgi.Response::new(
+                s.status,
+                s.headers,
+                join_chunks(s.chunks),
+              )
+            }
           }
           return if verb is Some(Head) && route.verb is Get {
+            // A HEAD reply carries no body, so a streaming route's chunks
+            // describe nothing that will be sent.
+            stream.val = None
             @moonasgi.Response::new(resp.status, resp.headers, b"")
           } else {
             resp
@@ -711,7 +1018,7 @@ fn App::route_and_dispatch(
     }
   }
   for entry in self.mounts {
-    let (prefix, sub) = entry
+    let (prefix, target) = entry
     match strip_prefix(prefix, request.path) {
       Some(rest) => {
         let subreq : @moonasgi.Request = {
@@ -721,9 +1028,20 @@ fn App::route_and_dispatch(
           headers: request.headers,
           body: request.body,
         }
-        let (resp, subbg) = sub.handle_with_background(subreq)
-        bg.absorb(subbg)
-        return resp
+        match target {
+          Sub(sub) => {
+            let (sresp, subbg) = sub.handle_with_stream(subreq)
+            bg.absorb(subbg)
+            stream.val = Some(sresp)
+            return @moonasgi.Response::new(
+              sresp.status,
+              sresp.headers,
+              join_chunks(sresp.chunks),
+            )
+          }
+          // A foreign handler has no background queue of its own to absorb.
+          Asgi(h) => return h(subreq)
+        }
       }
       None => ()
     }
@@ -759,6 +1077,59 @@ fn dedupe(names : Array[String]) -> Array[String] {
 }
 
 ///|
+/// Concatenate a streamed body's chunks — what the buffered half of the app sees
+/// of a stream.
+fn join_chunks(chunks : Array[Bytes]) -> Bytes {
+  if chunks.length() == 1 {
+    return chunks[0]
+  }
+  let buf = Buffer()
+  for c in chunks {
+    buf.write_bytes(c)
+  }
+  buf.to_bytes()
+}
+
+///|
+/// Route a request through the middleware chain and return the reply in its
+/// streamed form, plus the background queue the handler filled. `to_asgi` sends
+/// each chunk as its own body event; a test reads `chunks` to see where the
+/// boundaries fell. A route that is not a streaming one comes back as a single
+/// chunk, so this answers every request, not only the streamed ones.
+///
+/// A middleware is typed buffered-in, buffered-out, so the chain is run over the
+/// joined body and the chunks are kept only when what came back is what went in.
+/// A middleware that rewrote the body — `gzip` — has produced something the old
+/// boundaries no longer describe, and cutting the new bytes at them would send a
+/// corrupt stream.
+pub fn App::handle_with_stream(
+  self : App,
+  request : @moonasgi.Request,
+) -> (@moonasgi.StreamingResponse, BackgroundTasks) {
+  let bg = BackgroundTasks::new()
+  let stream : Ref[@moonasgi.StreamingResponse?] = Ref(None)
+  let base : @moonasgi.Handler = req => self.route_and_dispatch(req, bg, stream)
+  let resp = @moonasgi.compose(self.middlewares, base)(request)
+  let out = match stream.val {
+    Some(s) if join_chunks(s.chunks) == resp.body =>
+      @moonasgi.StreamingResponse::new(
+        status=resp.status,
+        headers=resp.headers,
+        chunks=s.chunks,
+        trailers=s.trailers,
+        early_hints=s.early_hints,
+      )
+    _ =>
+      @moonasgi.StreamingResponse::new(
+        status=resp.status,
+        headers=resp.headers,
+        chunks=[resp.body],
+      )
+  }
+  (out, bg)
+}
+
+///|
 /// Route a request through the middleware chain and return both the response and
 /// the background queue the handler filled — the caller (`to_asgi`, or a test)
 /// runs the queue after the response is sent. `handle` is the plain-response
@@ -767,10 +1138,8 @@ pub fn App::handle_with_background(
   self : App,
   request : @moonasgi.Request,
 ) -> (@moonasgi.Response, BackgroundTasks) {
-  let bg = BackgroundTasks::new()
-  let base : @moonasgi.Handler = req => self.route_and_dispatch(req, bg)
-  let resp = @moonasgi.compose(self.middlewares, base)(request)
-  (resp, bg)
+  let (s, bg) = self.handle_with_stream(request)
+  (@moonasgi.Response::new(s.status, s.headers, join_chunks(s.chunks)), bg)
 }
 
 ///|
@@ -889,7 +1258,7 @@ fn App::run_startup_hooks(self : App) -> String? {
     }
   }
   for mount in self.mounts {
-    if mount.1.run_startup_hooks() is Some(why) {
+    if mount.1 is Sub(sub) && sub.run_startup_hooks() is Some(why) {
       return Some(why)
     }
   }
@@ -903,7 +1272,9 @@ fn App::run_startup_hooks(self : App) -> String? {
 fn App::run_shutdown_hooks(self : App) -> String? {
   let mut failure = None
   for i = self.mounts.length() - 1; i >= 0; i = i - 1 {
-    if self.mounts[i].1.run_shutdown_hooks() is Some(why) && failure is None {
+    if self.mounts[i].1 is Sub(sub) &&
+      sub.run_shutdown_hooks() is Some(why) &&
+      failure is None {
       failure = Some(why)
     }
   }
@@ -930,15 +1301,12 @@ pub fn App::to_asgi(self : App) -> @moonasgi.AsgiApp {
           headers: hs.headers,
           body,
         }
-        let (resp, bg) = self.handle_with_background(request)
-        send(
-          @moonasgi.Event::HttpResponseStart(
-            status=resp.status,
-            headers=resp.headers,
-            trailers=false,
-          ),
-        )
-        send(@moonasgi.Event::HttpResponseBody(body=resp.body, more_body=false))
+        let (resp, bg) = self.handle_with_stream(request)
+        // moonasgi lowers the chunks: one body event each, `more_body` false only
+        // on the last, and trailers after them when the route declared any.
+        for event in resp.events() {
+          send(event)
+        }
         // The response is on the wire; now drain any background tasks.
         bg.run()
       }

@@ -171,6 +171,9 @@ pub fn App::openapi(
     if route.summary != "" {
       op["summary"] = route.summary.to_json()
     }
+    if route.description != "" {
+      op["description"] = route.description.to_json()
+    }
     // FastAPI omits `tags` entirely when empty rather than emitting `[]`.
     if !route.tags.is_empty() {
       op["tags"] = route.tags.to_json()
@@ -179,25 +182,50 @@ pub fn App::openapi(
     if route.deprecated {
       op["deprecated"] = true.to_json()
     }
+    if route.operation_id != "" {
+      op["operationId"] = route.operation_id.to_json()
+    }
+    let ok_status = route.status_code.unwrap_or(200)
     match route.endpoint {
       // A typed route: walk its descriptor once for parameters, request body,
       // responses, and any hoisted component schemas.
-      Some(ep) => emit_endpoint(op, ep, defs, version)
-      // An untyped route: the `:name` path params and a default 200 response.
+      Some(ep) => emit_endpoint(op, ep, defs, version, ok_status)
+      // An untyped route: the `:name` path params and a default response.
       None => {
         let params = path_parameters(full_path, version)
         if params.length() > 0 {
           op["parameters"] = params.to_json()
         }
         let ok : Map[String, Json] = Map([("description", "OK".to_json())])
-        let responses : Map[String, Json] = Map([("200", ok.to_json())])
+        let responses : Map[String, Json] = Map([
+          (ok_status.to_string(), ok.to_json()),
+        ])
         op["responses"] = responses.to_json()
       }
+    }
+    // The route's own `responses` are written after the descriptor's, so on a
+    // status both name, the one declared at the route stands.
+    if !route.responses.is_empty() {
+      let responses : Map[String, Json] = match op.get("responses") {
+        Some(Object(m)) => m
+        _ => Map([])
+      }
+      for rs in route.responses {
+        responses[rs.status.to_string()] = response_json(rs, defs, version)
+      }
+      op["responses"] = responses.to_json()
     }
     // Per-operation security requirements (← FastAPI's `Security(...)`).
     match security_json(route.security) {
       Some(s) => op["security"] = s
       None => ()
+    }
+    // Last, so `openapi_extra` can override any field moonapi generated. A
+    // fragment that is not an object has nothing to merge and is ignored.
+    if route.openapi_extra is Some(Object(extra)) {
+      for k, v in extra {
+        op[k] = v
+      }
     }
     let doc_path = path_template(full_path)
     let item = match paths.get(doc_path) {
@@ -314,8 +342,10 @@ fn App::collect_routes(
     out.push((join_prefix(prefix, route.path), route))
   }
   for entry in self.mounts {
-    let (mp, sub) = entry
-    sub.collect_routes(join_prefix(prefix, mp), out)
+    // A foreign handler describes nothing, so there is nothing of it to collect.
+    if entry.1 is Sub(sub) {
+      sub.collect_routes(join_prefix(prefix, entry.0), out)
+    }
   }
 }
 
@@ -335,7 +365,9 @@ fn App::collect_security_schemes(
     }
   }
   for entry in self.mounts {
-    entry.1.collect_security_schemes(out, seen)
+    if entry.1 is Sub(sub) {
+      sub.collect_security_schemes(out, seen)
+    }
   }
 }
 

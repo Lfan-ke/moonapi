@@ -225,3 +225,26 @@ test "oauth2_password_form: parses username / password / scope list" {
   assert_eq(form.password, "pw")
   assert_eq(form.scopes, ["read", "write"])
 }
+
+///|
+/// A login is six fields. A body big enough to break the default form limits is
+/// not one, so it is refused rather than searched for credentials.
+test "oauth2_password_form: an oversized body is not a password grant" {
+  let sb = StringBuilder()
+  sb.write_string("username=bob&password=pw")
+  // Past the default 1000-part bound, so the form underneath refuses it.
+  for i = 0; i < 1200; i = i + 1 {
+    sb.write_string("&x")
+    sb.write_string(i.to_string())
+    sb.write_string("=1")
+  }
+  let ctx : Context = {
+    request: mkreq_ct(
+      "POST",
+      "application/x-www-form-urlencoded",
+      @utf8.encode(sb.to_string()),
+    ),
+    params: Map([]),
+  }
+  assert_eq(ctx.oauth2_password_form() is None, true)
+}

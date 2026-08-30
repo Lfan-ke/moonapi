@@ -207,6 +207,29 @@ fn op_of(doc : Json, path : String, verb : String) -> Json? {
 }
 
 ///|
+/// The `responses` object of an operation, empty if it has none — test helper.
+fn op_responses(doc : Json, path : String, verb : String) -> Map[String, Json] {
+  match op_of(doc, path, verb) {
+    Some(Object(op)) =>
+      match op.get("responses") {
+        Some(Object(m)) => m
+        _ => Map([])
+      }
+    _ => Map([])
+  }
+}
+
+///|
+/// The `description` of one response of an operation, "" if it declares no such
+/// response — test helper.
+fn resp_desc(responses : Map[String, Json], status : String) -> String {
+  match responses.get(status) {
+    Some(j) => json_str(j, "description")
+    None => ""
+  }
+}
+
+///|
 test "openapi operation tags" {
   let app = App::new()
   app.get("/nav", _ctx => text(200, "ok"), tags=["ai", "navigator"])
@@ -254,6 +277,97 @@ test "openapi operation deprecated flag" {
     _ => false
   }
   assert_eq(has_dep, false)
+}
+
+///|
+/// The prose, the stable handle a client generator names its method after, and
+/// the status the success response is documented under — three of the keyword
+/// arguments a FastAPI path operation takes.
+test "openapi operation description, operationId and status_code" {
+  let app = App::new()
+  app.post(
+    "/items",
+    _ctx => text(201, "made"),
+    summary="create an item",
+    description="Stores the item and answers with where it went.",
+    operation_id="create_item",
+    status_code=201,
+  )
+  app.get("/plain", _ctx => text(200, "ok"))
+  let doc = app.openapi()
+  guard op_of(doc, "/items", "post") is Some(Object(op)) else {
+    fail("the operation should be present")
+  }
+  assert_eq(
+    op.get("description"),
+    Some("Stores the item and answers with where it went.".to_json()),
+  )
+  assert_eq(op.get("operationId"), Some("create_item".to_json()))
+  // `status_code` is what the success response is keyed by, in place of 200.
+  assert_eq(op_responses(doc, "/items", "post").keys().collect(), ["201"])
+  // A route that says none of it emits none of it, the way FastAPI does.
+  guard op_of(doc, "/plain", "get") is Some(Object(plain)) else {
+    fail("the operation should be present")
+  }
+  assert_eq(plain.contains("description"), false)
+  assert_eq(plain.contains("operationId"), false)
+  assert_eq(op_responses(doc, "/plain", "get").keys().collect(), ["200"])
+}
+
+///|
+/// A typed route's default response is keyed the same way; one that declares its
+/// own responses is not overruled by a status the route only documents.
+test "openapi status_code keys a typed endpoint's default response" {
+  let app = App::new()
+  app.post(
+    "/items",
+    _ctx => text(201, "made"),
+    status_code=201,
+    endpoint=Some(
+      Endpoint::new(params=[Param::new("q", InQuery, required=false)]),
+    ),
+  )
+  app.post(
+    "/declared",
+    _ctx => text(200, "ok"),
+    status_code=201,
+    endpoint=Some(Endpoint::new(responses=[ResponseSpec::new(200)])),
+  )
+  let doc = app.openapi()
+  assert_eq(op_responses(doc, "/items", "post").keys().collect(), ["201"])
+  assert_eq(op_responses(doc, "/declared", "post").keys().collect(), ["200"])
+}
+
+///|
+/// `responses` documents what else an operation can answer, beside the success
+/// response moonapi derives.
+test "openapi operation responses join the derived one" {
+  let app = App::new()
+  app.get("/thing", _ctx => text(200, "x"), responses=[
+    ResponseSpec::new(404, description="no such thing"),
+  ])
+  let rs = op_responses(app.openapi(), "/thing", "get")
+  assert_eq(resp_desc(rs, "200"), "OK")
+  assert_eq(resp_desc(rs, "404"), "no such thing")
+}
+
+///|
+/// The escape hatch: `openapi_extra` goes in after everything moonapi generated,
+/// so a caller can add a field the framework has no idea about, or replace one it
+/// got wrong for them.
+test "openapi_extra is merged last and overrides a generated field" {
+  let app = App::new()
+  app.get("/thing", _ctx => text(200, "x"), summary="generated", openapi_extra={
+    "summary": "hand-written",
+    "x-internal": true,
+  })
+  guard op_of(app.openapi(), "/thing", "get") is Some(Object(op)) else {
+    fail("the operation should be present")
+  }
+  assert_eq(op.get("summary"), Some("hand-written".to_json()))
+  assert_eq(op.get("x-internal"), Some(true.to_json()))
+  // What it does not name is left as generated.
+  assert_eq(op.contains("responses"), true)
 }
 
 ///|
